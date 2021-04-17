@@ -20,6 +20,9 @@ description:         Please see the README on GitHub at <https://github.com/rcdi
 
 dependencies:
 - base >= 4.7 && < 5
+- containers
+- parsec
+- split
 
 library:
   source-dirs: src
@@ -37,7 +40,7 @@ executables:
 
 tests:
   ceili-test:
-    main:                Spec.hs
+    main:                TestMain.hs
     source-dirs:         test
     ghc-options:
     - -threaded

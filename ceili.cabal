@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3df6212d8647eb7081a42de5ead8bfd0f824872192c60837c8b0c3580e248afa
+-- hash: 5e6f3d3dc1c287f3e77e6b2e56ac25e921475ee6c1cb6d3a307cda489e3753f4
 
 name:           ceili
 version:        0.1.0.0
@@ -27,12 +27,20 @@ source-repository head
 library
   exposed-modules:
       Ceili
+      Ceili.Assertion
+      Ceili.Assertion.AssertionLanguage
+      Ceili.Assertion.AssertionParser
+      Ceili.Name
+      Ceili.SMT
   other-modules:
       Paths_ceili
   hs-source-dirs:
       src
   build-depends:
       base >=4.7 && <5
+    , containers
+    , parsec
+    , split
   default-language: Haskell2010
 
 executable ceili-exe
@@ -45,13 +53,17 @@ executable ceili-exe
   build-depends:
       base >=4.7 && <5
     , ceili
+    , containers
+    , parsec
+    , split
   default-language: Haskell2010
 
 test-suite ceili-test
   type: exitcode-stdio-1.0
-  main-is: Spec.hs
+  main-is: TestMain.hs
   other-modules:
-      TestMain
+      Ceili.AssertionGen
+      Ceili.AssertionTest
       Paths_ceili
   hs-source-dirs:
       test
@@ -60,4 +72,7 @@ test-suite ceili-test
       HTF
     , base >=4.7 && <5
     , ceili
+    , containers
+    , parsec
+    , split
   default-language: Haskell2010
