@@ -1,20 +1,23 @@
 module Ceili.Language.Imp
-    ( AExp(..)
-    , BExp(..)
-    , Name(..)
-    , Program(..)
-    , aexpToArith
-    , bexpToAssertion
-    ) where
+  ( AExp(..)
+  , BExp(..)
+  , Invariant
+  , Measure
+  , Name(..)
+  , Program(..)
+  , aexpToArith
+  , bexpToAssertion
+  ) where
 
 import qualified Data.Set  as Set
-import           Ceili.Assertion.AssertionLanguage  ( Assertion)
+import           Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
 import           Ceili.Name ( CollectableNames(..)
                             , MappableNames(..)
                             , Name(..)
                             , TypedName(..))
 import qualified Ceili.Name as Name
+import           Ceili.PTS.ForwardPT ( ForwardPT )
 
 
 ----------------------------
@@ -138,12 +141,15 @@ bexpToAssertion bexp = case bexp of
 -- Programs --
 ----------------
 
+type Invariant = Assertion
+type Measure   = A.Arith
+
 data Program
   = SSkip
   | SAsgn  Name AExp
   | SSeq   [Program]
   | SIf    BExp Program Program
-  | SWhile BExp Program (Assertion, A.Arith)
+  | SWhile BExp Program (Invariant, Measure)
   deriving (Eq, Ord, Show)
 
 instance CollectableNames Program where
@@ -165,3 +171,33 @@ instance MappableNames Program where
     SIf b t e    -> SIf (mapNames f b) (mapNames f t) (mapNames f e)
     SWhile cond body (inv, var)
                  -> SWhile (mapNames f cond) (mapNames f body) (inv, var)
+
+
+--------------------------
+-- Predicate Transforms --
+--------------------------
+
+strongestPost :: ForwardPT Program
+strongestPost pre prog = do
+  case prog of
+    SSkip         -> pre
+    SSeq []       -> pre
+    SSeq (s:ss)   -> strongestPost (strongestPost pre s) (SSeq ss)
+    SAsgn lhs rhs -> spAsgn lhs rhs pre
+    SIf b s1 s2   -> let
+      cond   = bexpToAssertion b
+      postS1 = strongestPost (A.And [pre, cond]) s1
+      postS2 = strongestPost (A.And [pre, A.Not cond]) s2
+      in A.Or [postS1, postS2]
+    loop@(SWhile b body (inv, measure)) -> let
+      cond = bexpToAssertion b
+      -- TODO: add invariant vc somehow?
+      in A.And [A.Not cond, inv]
+
+spAsgn :: Name -> AExp -> Assertion -> Assertion
+spAsgn lhs rhs pre = pre
+  -- freshLhs    <- envFreshen lhs
+  -- let subPre   = Name.substituteAll [lhs] [freshLhs] pre
+  -- let rhsArith = aexpToArith rhs
+  -- let subRhs   = A.subArith (Name.toIntName lhs) (A.toIntVar freshLhs) rhsArith
+  -- return $ A.Exists [Name.toIntName freshLhs] $ A.And [A.Eq (A.toIntVar lhs) subRhs, subPre]

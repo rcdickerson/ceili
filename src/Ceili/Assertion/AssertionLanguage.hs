@@ -3,6 +3,7 @@ module Ceili.Assertion.AssertionLanguage
   , Assertion(..)
   , Name(..)
   , freeVars
+  , subArith
   , toSMT
   ) where
 
@@ -141,6 +142,46 @@ instance ToSMT Assertion where
       quantToSMT name qvars body =
         let qvarsSMT = intercalate " " $ map toSMT qvars
         in "(" ++ name ++ " (" ++ qvarsSMT ++ ") " ++ (toSMT body) ++ ")"
+
+
+------------------------------
+--- Arithmetic Substitution --
+------------------------------
+
+class SubstitutableArith a where
+  subArith :: TypedName -> Arith -> a -> a
+
+instance SubstitutableArith Arith where
+  subArith from to arith =
+    let sub = subArith from to
+    in case arith of
+      Num x     -> Num x
+      Var tname -> if from == tname then to else Var tname
+      Add as    -> Add $ map sub as
+      Sub as    -> Sub $ map sub as
+      Mul as    -> Mul $ map sub as
+      Div a1 a2 -> Div (sub a1) (sub a2)
+      Mod a1 a2 -> Mod (sub a1) (sub a2)
+      Pow a1 a2 -> Pow (sub a1) (sub a2)
+
+instance SubstitutableArith Assertion where
+  subArith from to assertion =
+    let sub = subArith from to
+    in case assertion of
+      ATrue         -> ATrue
+      AFalse        -> AFalse
+      Atom tname    -> Atom tname
+      Not a         -> Not $ sub a
+      And as        -> And $ map sub as
+      Or as         -> Or  $ map sub as
+      Imp a1 a2     -> Imp (sub a1) (sub a2)
+      Eq a1 a2      -> Eq  (subArith from to a1) (subArith from to a2)
+      Lt a1 a2      -> Lt  (subArith from to a1) (subArith from to a2)
+      Gt a1 a2      -> Gt  (subArith from to a1) (subArith from to a2)
+      Lte a1 a2     -> Lte (subArith from to a1) (subArith from to a2)
+      Gte a1 a2     -> Gte (subArith from to a1) (subArith from to a2)
+      Forall vars a -> Forall vars (sub a)
+      Exists vars a -> Exists vars (sub a)
 
 
 --------------------

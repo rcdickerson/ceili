@@ -6,6 +6,7 @@ module Ceili.Assertion
   , freeVars
   , parseArith
   , parseAssertion
+  , subArith
   , toSMT
   ) where
 
