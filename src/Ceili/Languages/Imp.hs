@@ -1,4 +1,4 @@
-module Ceili.Languages.Imp.ImpLanguage
+module Ceili.Languages.Imp
     ( AExp(..)
     , BExp(..)
     , Name(..)

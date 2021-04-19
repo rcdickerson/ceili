@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bf257d2c41d97172be2c32863eeff9e591a5fd90b8acb444376ecfb0de1d8ecf
+-- hash: fe280f9fe1a15fffdb84d6083487f2f1852ae5f5aba320a32af207767e3b3fba
 
 name:           ceili
 version:        0.1.0.0
@@ -30,7 +30,7 @@ library
       Ceili.Assertion
       Ceili.Assertion.AssertionLanguage
       Ceili.Assertion.AssertionParser
-      Ceili.Languages.Imp.ImpLanguage
+      Ceili.Languages.Imp
       Ceili.Name
       Ceili.SMT
   other-modules:
