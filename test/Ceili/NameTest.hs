@@ -6,6 +6,7 @@ import Test.Framework
 import Ceili.Name
 import Ceili.SMT
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 -- Dummy names for convenience.
 x0 = Name "x" 0
@@ -122,3 +123,27 @@ test_substituteAllHandles_swap = let
   expected = [ Name "bar" 0, Name "foo" 1 ]
   actual = substituteAllHandles ["foo", "bar"] ["bar", "foo"] names
   in assertEqual expected actual
+
+test_mappableNames_name =
+  assertEqual x1 $ mapNames (\_ -> x1) x0
+
+test_collectableNames_name =
+  assertEqual (Set.singleton x0) $ namesIn x0
+
+
+-- Typed names
+
+x0Int = TypedName x0 Int
+x1Int = TypedName x1 Int
+x0Bool = TypedName x0 Bool
+
+test_mappableNames_typedName =
+  assertEqual x1Int $ mapNames (\_ -> x1) x0Int
+
+test_collectableNames_typedName =
+  assertEqual (Set.singleton x0) $ namesIn x0Int
+
+test_toSMT_typedName = do
+  assertEqual "(x int)" $ toSMT x0Int
+  assertEqual "(x!1 int)" $ toSMT x1Int
+  assertEqual "(x bool)" $ toSMT x0Bool
