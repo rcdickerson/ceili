@@ -49,6 +49,9 @@ instance CollectableNames Name where
 instance MappableNames Name where
   mapNames = ($)
 
+instance MappableNames a => MappableNames [a] where
+  mapNames f = map (mapNames f)
+
 instance ToSMT Name where
   toSMT (Name h 0) = h
   toSMT (Name h i) = h ++ "!" ++ (show i)
@@ -75,10 +78,20 @@ substituteHandle from to a = mapNames (liftHandleMap sub) a
   where sub name = if (name == from) then to else name
 
 substituteAll :: MappableNames a => [Name] -> [Name] -> a -> a
-substituteAll from to x = foldr (uncurry substitute) x $ zip from to
+substituteAll from to x = mapNames doSub x
+  where
+    subMap = Map.fromList $ zip from to
+    doSub name = case Map.lookup name subMap of
+                   Nothing -> name
+                   Just replacement -> replacement
 
 substituteAllHandles :: MappableNames a => [String] -> [String] -> a -> a
-substituteAllHandles from to x = foldr (uncurry substituteHandle) x $ zip from to
+substituteAllHandles from to x = mapNames doSub x
+  where
+    subMap = Map.fromList $ zip from to
+    doSub (Name handle nid) = case Map.lookup handle subMap of
+                                Nothing -> Name handle nid
+                                Just replacement -> Name replacement nid
 
 type NextFreshIds = Map Handle Id
 
@@ -86,9 +99,9 @@ buildNextFreshIds :: Foldable a => a Name -> NextFreshIds
 buildNextFreshIds names = Map.map (+1) maxMap
   where
     maxMap = foldr newMax Map.empty names
-    newMax (Name handle id) maxes = case Map.lookup handle maxes of
-      Nothing     -> Map.insert handle id maxes
-      Just curMax -> Map.insert handle (max curMax id) maxes
+    newMax (Name handle hid) maxes = case Map.lookup handle maxes of
+      Nothing     -> Map.insert handle hid maxes
+      Just curMax -> Map.insert handle (max curMax hid) maxes
 
 nextFreshId :: Handle -> NextFreshIds -> (Id, NextFreshIds)
 nextFreshId handle nextIds =
@@ -102,7 +115,7 @@ nextFreshName (Name handle _) nextIds =
   in  (Name handle id', nextIds')
 
 freshNames :: Foldable f => f Name -> NextFreshIds -> (Map Name Name, NextFreshIds)
-freshNames names nextIds = foldr f (Map.empty, nextIds) names
+freshNames names nextFreshIds = foldr f (Map.empty, nextFreshIds) names
   where f name (replacements, nextIds) =
           case Map.lookup name replacements of
             Just _     -> (replacements, nextIds)
@@ -110,9 +123,9 @@ freshNames names nextIds = foldr f (Map.empty, nextIds) names
                           in (Map.insert name name' replacements, nextIds')
 
 freshen :: Traversable t => t Name -> NextFreshIds -> (t Name, NextFreshIds)
-freshen names nextIds =
+freshen names nextFreshIds =
   (fmap (replacements!) names, nextIds')
-  where (replacements, nextIds') = freshNames names nextIds
+  where (replacements, nextIds') = freshNames names nextFreshIds
 
 
 -----------------
