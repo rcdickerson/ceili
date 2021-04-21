@@ -19,7 +19,8 @@ prog1 = SSeq [ SAsgn x $ ALit 5
              ]
 
 test_forwardPT = let
-  expectedP = parseAssertion $ "(or \
+  expectedP = parseAssertion $
+   "(or \
    \ (exists ((y!1 int)) \
    \   (and (= y 0)      \
    \        (and (exists ((x!1 int)) (and (= x 5) true)) (< x 0)))) \
