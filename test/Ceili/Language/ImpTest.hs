@@ -27,7 +27,7 @@ test_forwardPT = let
    \ (exists ((y!1 int)) \
    \   (and (= y 1)      \
    \        (and (exists ((x!1 int)) (and (= x 5) true)) (not (< x 0))))))"
-  actual   = forwardPT ATrue prog1
+  actual = forwardPT ATrue prog1
   in case expectedP of
     Left err       -> assertFailure $ show err
     Right expected -> assertEqual expected actual
