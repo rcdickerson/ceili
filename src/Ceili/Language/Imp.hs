@@ -7,6 +7,7 @@ module Ceili.Language.Imp
   , Program(..)
   , aexpToArith
   , bexpToAssertion
+  , forwardPT
   ) where
 
 import qualified Data.Set  as Set
@@ -177,27 +178,30 @@ instance MappableNames Program where
 -- Predicate Transforms --
 --------------------------
 
-strongestPost :: ForwardPT Program
-strongestPost pre prog = do
+forwardPT :: ForwardPT Program
+forwardPT pre prog = do
   case prog of
     SSkip         -> pre
     SSeq []       -> pre
-    SSeq (s:ss)   -> strongestPost (strongestPost pre s) (SSeq ss)
+    SSeq (s:ss)   -> forwardPT (forwardPT pre s) (SSeq ss)
     SAsgn lhs rhs -> spAsgn lhs rhs pre
     SIf b s1 s2   -> let
       cond   = bexpToAssertion b
-      postS1 = strongestPost (A.And [pre, cond]) s1
-      postS2 = strongestPost (A.And [pre, A.Not cond]) s2
+      postS1 = forwardPT (A.And [pre, cond]) s1
+      postS2 = forwardPT (A.And [pre, A.Not cond]) s2
       in A.Or [postS1, postS2]
-    loop@(SWhile b body (inv, measure)) -> let
+    SWhile b body (inv, measure) -> let
       cond = bexpToAssertion b
       -- TODO: add invariant vc somehow?
       in A.And [A.Not cond, inv]
 
 spAsgn :: Name -> AExp -> Assertion -> Assertion
-spAsgn lhs rhs pre = pre
-  -- freshLhs    <- envFreshen lhs
-  -- let subPre   = Name.substituteAll [lhs] [freshLhs] pre
-  -- let rhsArith = aexpToArith rhs
-  -- let subRhs   = A.subArith (Name.toIntName lhs) (A.toIntVar freshLhs) rhsArith
-  -- return $ A.Exists [Name.toIntName freshLhs] $ A.And [A.Eq (A.toIntVar lhs) subRhs, subPre]
+spAsgn lhs rhs pre = let
+  names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
+  (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
+  subPre    = Name.substitute lhs lhs' pre
+  rhsArith  = aexpToArith rhs
+  ilhs      = TypedName lhs  Name.Int
+  ilhs'     = TypedName lhs' Name.Int
+  subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
+  in A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
