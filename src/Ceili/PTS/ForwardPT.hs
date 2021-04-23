@@ -4,4 +4,4 @@ module Ceili.PTS.ForwardPT
 
 import Ceili.Assertion ( Assertion )
 
-type ForwardPT a = Assertion -> a -> Assertion
+type ForwardPT p = Assertion -> p -> Assertion

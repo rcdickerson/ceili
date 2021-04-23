@@ -19,13 +19,13 @@ module Ceili.Name
   , substituteAllHandles
   ) where
 
-import           Data.List ( intercalate )
-import           Data.List.Split ( splitOn )
-import           Data.Map  ( Map, (!) )
+import Data.List ( intercalate )
+import Data.List.Split ( splitOn )
+import Data.Map ( Map, (!) )
 import qualified Data.Map as Map
-import           Data.Set  ( Set )
+import Data.Set ( Set )
 import qualified Data.Set as Set
-import           Ceili.SMT ( ToSMT(..) )
+import Ceili.ToSMT ( ToSMT(..) )
 
 -----------
 -- Names --

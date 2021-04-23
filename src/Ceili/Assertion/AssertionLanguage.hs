@@ -14,7 +14,7 @@ import           Ceili.Name ( Name(..)
                             , TypedName(..)
                             , CollectableNames(..)
                             , MappableNames(..) )
-import           Ceili.SMT ( ToSMT(..) )
+import           Ceili.ToSMT ( ToSMT(..) )
 
 ----------------------------
 -- Arithmetic Expressions --

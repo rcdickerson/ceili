@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b37afab7394843b5f99c68919c5ecf79abc879f03ab6a620f3f5726aa3e1a194
+-- hash: 0e5a7fb5a28b7b1a0e1ce0070ae15f0d942b4bd7675762fa65b6b2f06975e8e9
 
 name:           ceili
 version:        0.1.0.0
@@ -30,10 +30,13 @@ library
       Ceili.Assertion
       Ceili.Assertion.AssertionLanguage
       Ceili.Assertion.AssertionParser
+      Ceili.InvariantInference.Houdini
+      Ceili.InvariantInference.LinearInequalities
       Ceili.Language.Imp
       Ceili.Name
       Ceili.PTS.ForwardPT
       Ceili.SMT
+      Ceili.ToSMT
   other-modules:
       Paths_ceili
   hs-source-dirs:
@@ -42,7 +45,9 @@ library
       base >=4.7 && <5
     , containers
     , parsec
+    , simple-smt
     , split
+    , unbounded-delays
   default-language: Haskell2010
 
 executable ceili-exe
@@ -57,7 +62,9 @@ executable ceili-exe
     , ceili
     , containers
     , parsec
+    , simple-smt
     , split
+    , unbounded-delays
   default-language: Haskell2010
 
 test-suite ceili-test
@@ -78,5 +85,7 @@ test-suite ceili-test
     , ceili
     , containers
     , parsec
+    , simple-smt
     , split
+    , unbounded-delays
   default-language: Haskell2010
