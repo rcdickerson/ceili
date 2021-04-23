@@ -4,7 +4,7 @@ module Ceili.NameTest(htf_thisModulesTests) where
 import Test.Framework
 
 import Ceili.Name
-import Ceili.SMT
+import Ceili.ToSMT
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
