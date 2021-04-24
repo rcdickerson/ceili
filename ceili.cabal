@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2dbb00cf038d00527abb8e8cfa8b25ff1f468e737f123e5d419b276d8c18f14b
+-- hash: 766af045d92991d65b72954ab89376dd4bbfd29db5e476ee0f15a6e660495d10
 
 name:           ceili
 version:        0.1.0.0
@@ -47,6 +47,7 @@ library
       base >=4.7 && <5
     , bytestring
     , containers
+    , fast-logger
     , filepath
     , mtl
     , parsec
@@ -69,6 +70,7 @@ executable ceili-verification-test
     , bytestring
     , ceili
     , containers
+    , fast-logger
     , filepath
     , mtl
     , parsec
@@ -96,6 +98,7 @@ test-suite ceili-test
     , bytestring
     , ceili
     , containers
+    , fast-logger
     , filepath
     , mtl
     , parsec
