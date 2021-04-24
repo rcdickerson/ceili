@@ -45,7 +45,7 @@ houdini candidates computeSP = do
     ++ (show $ length candidates)
     ++ " candidate clauses."
   sp <- computeSP $ And candidates
-  inductive <- filterM (checkValid . Imp sp) candidates
+  inductive <- filterM (checkValidWithLog LogLevelNone . Imp sp) candidates
   if (length inductive == length candidates)
     then return candidates
     else houdini inductive computeSP

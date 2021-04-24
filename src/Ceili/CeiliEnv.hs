@@ -3,18 +3,20 @@ module Ceili.CeiliEnv
   , Ceili
   , LogLevel(..)
   , checkValid
+  , checkValidWithLog
   , defaultEnv
   , log_d
   , log_e
   , log_i
   , runCeili
+  , throwError
   ) where
 
 import Ceili.Assertion ( Assertion(..) )
 import qualified Ceili.SMT as SMT
 import Control.Concurrent.Timeout ( timeout )
 import Control.Monad.IO.Class ( liftIO )
-import Control.Monad.Except ( ExceptT, runExceptT )
+import Control.Monad.Except ( ExceptT, runExceptT, throwError )
 import Control.Monad.Trans.State ( StateT, evalStateT, get )
 import System.Log.FastLogger
 
@@ -67,16 +69,16 @@ withTimeout t = do
   liftIO $ timeout (1000 * timeoutMs) t
 
 checkValid :: Assertion -> Ceili Bool
-checkValid = checkValidAt LogLevelDebug
+checkValid = checkValidWithLog LogLevelDebug
 
-checkValidAt :: LogLevel -> Assertion -> Ceili Bool
-checkValidAt level assertion = do
+checkValidWithLog :: LogLevel -> Assertion -> Ceili Bool
+checkValidWithLog level assertion = do
   logType <- logTypeAt level
   result  <- withTimeout
            $ withFastLogger logType
            $ \logger -> SMT.checkValidFL logger assertion
   case result of
-    Nothing               -> do log_e "SMT timeout"; return False
-    Just SMT.Valid        -> return True
-    Just (SMT.Invalid _)  -> return False
-    Just SMT.ValidUnknown -> do log_e "SMT unknown"; return False
+    Nothing                -> do log_e "SMT timeout"; return False
+    Just SMT.Valid         -> return True
+    Just (SMT.Invalid msg) -> do log_d msg; return False
+    Just SMT.ValidUnknown  -> do log_e "SMT unknown"; return False

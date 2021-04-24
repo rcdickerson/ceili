@@ -14,6 +14,7 @@ import qualified Data.Set  as Set
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.CeiliEnv ( Ceili )
+import qualified Ceili.CeiliEnv as Env
 import qualified Ceili.InvariantInference.Houdini as Houdini
 import Ceili.Name ( CollectableNames(..)
                   , MappableNames(..)
@@ -22,6 +23,7 @@ import Ceili.Name ( CollectableNames(..)
                   , Type(..) )
 import qualified Ceili.Name as Name
 import Ceili.PTS.ForwardPT ( ForwardPT )
+import Ceili.SMTString ( showSMT )
 import Data.Set ( Set )
 
 
@@ -194,14 +196,19 @@ forwardPT pre prog = do
       postS1 <- forwardPT (A.And [pre, cond]) s1
       postS2 <- forwardPT (A.And [pre, A.Not cond]) s2
       return $ A.Or [postS1, postS2]
-    SWhile b body (minv, measure) -> do
+    SWhile b body (minv, _) -> do
       let cond = bexpToAssertion b
-      -- TODO: add invariant vc somehow?
+      let computeBodySP pre' = forwardPT pre' body
       inv <- case minv of
-        Nothing  -> Houdini.infer (typedNamesIn body) Set.empty 2 pre
-                    (\pre' -> forwardPT pre' body)
+        Nothing  -> Houdini.infer (typedNamesIn body) Set.empty 2 pre computeBodySP
         Just inv -> return inv
-      return $ A.And [A.Not cond, inv]
+      bodyInvSP <- computeBodySP inv
+      Env.log_d "Checking loop invariant verification conditions..."
+      vcCheck <- Env.checkValid $ A.And [ A.Imp pre inv, A.Imp bodyInvSP inv ]
+      if vcCheck
+        then do Env.log_d "Loop invariant verification conditions passed."
+                return $ A.And [A.Not cond, inv]
+        else Env.throwError $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
 
 typedNamesIn :: Program -> Set TypedName
 typedNamesIn prog = let

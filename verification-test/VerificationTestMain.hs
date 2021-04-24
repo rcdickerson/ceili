@@ -40,8 +40,15 @@ readImpFile fileName = do
          </> "imp"
          </> fileName
 
-test_inferInv1 = do
-  let post = Eq (Var $ TypedName (Name "x" 0) Int)
-                (Var $ TypedName (Name "y" 0) Int)
+varX = Var $ TypedName (Name "x" 0) Int
+varY = Var $ TypedName (Name "y" 0) Int
+
+test_inferInv1Valid = do
+  let post = Eq varX varY
   progStr <- readImpFile "inferInv1.imp"
   parseAndTest ATrue progStr post ExpectSuccess
+
+test_inferInv1Invalid = do
+  let post = Not $ Eq varX varY
+  progStr <- readImpFile "inferInv1.imp"
+  parseAndTest ATrue progStr post ExpectFailure
