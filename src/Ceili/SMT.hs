@@ -67,9 +67,8 @@ fastLoggerAdapter fastLogger = do
   return $ SSMT.Logger
     { SSMT.logMessage = \msg -> do
         tabs <- readIORef tab
-        let ls   = lines msg
-        let msg' = unlines [ replicate tabs ' ' ++ l | l <- ls ] -- TODO: Something more efficient
-        fastLogger $ FL.toLogStr msg'
+        let indent = FL.toLogStr $ replicate tabs ' '
+        fastLogger $ indent <> FL.toLogStr msg
     , SSMT.logLevel    = return 0
     , SSMT.logSetLevel = \_ -> return ()
     , SSMT.logTab      = modifyIORef' tab (+ 2)
