@@ -23,7 +23,8 @@ data Env = Env { logger_debug :: LogType
                , logger_info  :: LogType
                , smtTimeoutMs :: Integer }
 
-data LogLevel = LogLevelDebug
+data LogLevel = LogLevelNone
+              | LogLevelDebug
               | LogLevelError
               | LogLevelInfo
 
@@ -55,6 +56,7 @@ log_e = logAt logger_error
 
 logTypeAt :: LogLevel -> Ceili LogType
 logTypeAt level = case level of
+  LogLevelNone  -> return LogNone
   LogLevelDebug -> get >>= return . logger_debug
   LogLevelError -> get >>= return . logger_error
   LogLevelInfo  -> get >>= return . logger_info
