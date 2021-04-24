@@ -6,9 +6,8 @@ import Test.Framework
 
 import Ceili.Language.Imp
 import Ceili.Language.ImpParser
-import qualified Data.Map as Map
 
--- Some dummy names / vs for convenience
+-- Some dummy names / vars for convenience
 n name = Name name 0
 v = AVar . n
 a = v "a"

@@ -15,17 +15,18 @@ import qualified Data.Set as Set
 -- appear multiple places in the inequality, but each `name` will
 -- appear at most once.
 linearInequalities :: Set TypedName -> Set Integer -> Int -> Set Assertion
-linearInequalities names lits size =
-  if (Set.size names < size) then
-    error $ "Need at least " ++ (show $ size) ++ " vars"
-  else let
-  numAriths   = Set.map Num $ Set.insert 0 $ Set.insert 1 $ Set.insert (-1) lits
-  varAriths   = Set.map Var names
-  varGroups   = subsets size varAriths
-  coeffGroups = chooseWithReplacement size numAriths
+linearInequalities names lits size = let
+  size' = if (Set.size names < size) then Set.size names else size
+  arithLits   = Set.map Num $ Set.insert 0
+                            $ Set.insert 1
+                            $ Set.insert (-1)
+                              lits
+  varNames    = Set.map Var names
+  varGroups   = subsets size' varNames
+  coeffGroups = chooseWithReplacement size' arithLits
   combos      = catMaybes $ Set.map (uncurry constructLC) $
                 Set.cartesianProduct coeffGroups varGroups
-  bounds      = Set.union numAriths varAriths
+  bounds      = Set.union arithLits varNames
   ineqPairs   = Set.filter (uncurry namesDisjoint) $
                 Set.filter (uncurry atLeastOneVar) $
                 Set.cartesianProduct bounds combos
@@ -73,10 +74,3 @@ chooseWithReplacement 0 _ = Set.singleton []
 chooseWithReplacement n as =
   let prev = chooseWithReplacement (n - 1) as
   in  Set.map (uncurry (:)) $ Set.cartesianProduct as prev
-
-chooseNoReplacement :: Ord a => Int -> Set a -> Set [a]
-chooseNoReplacement 0 _ = Set.singleton []
-chooseNoReplacement n as =
-  if (Set.size as < n) then error $ "Need at least " ++ show n ++ " items"
-  else let f a = chooseNoReplacement (n - 1) $ Set.delete a as
-       in Set.unions $ Set.map (\a -> Set.map (a:) (f a)) as

@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Ceili.Assertion.AssertionLanguage
   ( Arith(..)
   , Assertion(..)
@@ -7,14 +9,15 @@ module Ceili.Assertion.AssertionLanguage
   , toSMT
   ) where
 
-import           Data.List ( intercalate )
-import           Data.Set  ( Set )
+import Ceili.Name ( Name(..)
+                  , TypedName(..)
+                  , CollectableNames(..)
+                  , MappableNames(..) )
+import Ceili.SMTString ( SMTString(..) )
+import Data.ByteString ( ByteString )
+import qualified Data.ByteString.Char8 as S8
+import Data.Set  ( Set )
 import qualified Data.Set as Set
-import           Ceili.Name ( Name(..)
-                            , TypedName(..)
-                            , CollectableNames(..)
-                            , MappableNames(..) )
-import           Ceili.ToSMT ( ToSMT(..) )
 
 ----------------------------
 -- Arithmetic Expressions --
@@ -30,8 +33,8 @@ data Arith = Num Integer
            | Pow Arith Arith
            deriving (Show, Eq, Ord)
 
-toSexp :: ToSMT a => String -> [a] -> String
-toSexp name as = "(" ++ name ++ " " ++ (intercalate " " $ map toSMT as) ++ ")"
+toSexp :: SMTString a => ByteString -> [a] -> ByteString
+toSexp name as = "(" <> name <> " "<> (S8.intercalate " " $ map toSMT as) <> ")"
 
 instance MappableNames Arith where
   mapNames f arith = case arith of
@@ -55,9 +58,9 @@ instance CollectableNames Arith where
     Mod a1 a2 -> Set.union (namesIn a1) (namesIn a2)
     Pow a1 a2 -> Set.union (namesIn a1) (namesIn a2)
 
-instance ToSMT Arith where
+instance SMTString Arith where
   toSMT arith = case arith of
-    Num n -> show n
+    Num n -> S8.pack $ show n
     Var tname -> toSMT $ tnName tname
     Add as    -> toSexp "+"   as
     Sub as    -> toSexp "-"   as
@@ -121,7 +124,7 @@ instance CollectableNames Assertion where
     Forall vs a    -> Set.unions $ (namesIn a):(map namesIn vs)
     Exists vs a    -> Set.unions $ (namesIn a):(map namesIn vs)
 
-instance ToSMT Assertion where
+instance SMTString Assertion where
   toSMT assertion = case assertion of
     ATrue           -> "true"
     AFalse          -> "false"
@@ -138,10 +141,10 @@ instance ToSMT Assertion where
     Forall vars a   -> quantToSMT "forall" vars a
     Exists vars a   -> quantToSMT "exists" vars a
     where
-      quantToSMT :: String -> [TypedName] -> Assertion -> String
+      quantToSMT :: ByteString -> [TypedName] -> Assertion -> ByteString
       quantToSMT name qvars body =
-        let qvarsSMT = intercalate " " $ map toSMT qvars
-        in "(" ++ name ++ " (" ++ qvarsSMT ++ ") " ++ (toSMT body) ++ ")"
+        let qvarsSMT = S8.intercalate " " $ map toSMT qvars
+        in "(" <> name <> " (" <> qvarsSMT <> ") " <> toSMT body <> ")"
 
 
 ------------------------------

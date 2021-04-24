@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 51c8e2ceaa8a16e4206791d975eb9cbe4df51ab99e9652f2c868966cc5d39ec8
+-- hash: e58eff968c2af19af9c23c40047392cfe784b9903f138ea2a5042d049460e322
 
 name:           ceili
 version:        0.1.0.0
@@ -37,14 +37,16 @@ library
       Ceili.Name
       Ceili.PTS.ForwardPT
       Ceili.SMT
-      Ceili.ToSMT
+      Ceili.SMTString
   other-modules:
       Paths_ceili
   hs-source-dirs:
       src
   build-depends:
       base >=4.7 && <5
+    , bytestring
     , containers
+    , filepath
     , parsec
     , simple-smt
     , split
@@ -61,8 +63,10 @@ executable ceili-verification-test
   build-depends:
       HTF
     , base >=4.7 && <5
+    , bytestring
     , ceili
     , containers
+    , filepath
     , parsec
     , simple-smt
     , split
@@ -85,8 +89,10 @@ test-suite ceili-test
   build-depends:
       HTF
     , base >=4.7 && <5
+    , bytestring
     , ceili
     , containers
+    , filepath
     , parsec
     , simple-smt
     , split

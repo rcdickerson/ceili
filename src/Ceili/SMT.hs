@@ -1,12 +1,13 @@
 module Ceili.SMT
   ( SatResult(..)
   , ValidResult(..)
+  , checkSat
   , checkValid
   ) where
 
 import qualified Ceili.Assertion as C
 import Ceili.Name ( TypedName(..), Type(..) )
-import Ceili.ToSMT ( toSMT )
+import Ceili.SMTString ( showSMT )
 import qualified Data.Set as Set
 import qualified SimpleSMT as SSMT
 
@@ -43,9 +44,9 @@ declareFVs solver assertion = let
   in mapM_ (SSMT.ackCommand solver) declareVars
 
 toSSMT :: C.Assertion -> SSMT.SExpr
-toSSMT = SSMT.Atom . toSMT
+toSSMT = SSMT.Atom . showSMT
 
 toDeclareConst :: TypedName -> SSMT.SExpr
 toDeclareConst (TypedName name typ) = case typ of
-  Bool -> SSMT.Atom $ "(declare-const " ++ toSMT name ++ " Bool)"
-  Int  -> SSMT.Atom $ "(declare-const " ++ toSMT name ++ " Int)"
+  Bool -> SSMT.Atom $ "(declare-const " ++ showSMT name ++ " Bool)"
+  Int  -> SSMT.Atom $ "(declare-const " ++ showSMT name ++ " Int)"

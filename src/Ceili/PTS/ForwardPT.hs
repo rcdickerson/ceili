@@ -4,4 +4,5 @@ module Ceili.PTS.ForwardPT
 
 import Ceili.Assertion ( Assertion )
 
-type ForwardPT p = Assertion -> p -> Assertion
+-- TODO: Replace IO with better monad.
+type ForwardPT p = Assertion -> p -> IO Assertion

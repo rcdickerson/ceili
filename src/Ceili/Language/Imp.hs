@@ -11,14 +11,18 @@ module Ceili.Language.Imp
   ) where
 
 import qualified Data.Set  as Set
-import           Ceili.Assertion.AssertionLanguage ( Assertion)
+import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
-import           Ceili.Name ( CollectableNames(..)
-                            , MappableNames(..)
-                            , Name(..)
-                            , TypedName(..))
+import qualified Ceili.InvariantInference.Houdini as Houdini
+import Ceili.Name ( CollectableNames(..)
+                  , MappableNames(..)
+                  , Name(..)
+                  , TypedName(..)
+                  , Type(..) )
 import qualified Ceili.Name as Name
-import           Ceili.PTS.ForwardPT ( ForwardPT )
+import Ceili.PTS.ForwardPT ( ForwardPT )
+import Data.Set ( Set )
+import qualified Data.Set as Set
 
 
 ----------------------------
@@ -181,23 +185,35 @@ instance MappableNames Program where
 forwardPT :: ForwardPT Program
 forwardPT pre prog = do
   case prog of
-    SSkip         -> pre
-    SSeq []       -> pre
-    SSeq (s:ss)   -> forwardPT (forwardPT pre s) (SSeq ss)
+    SSkip         -> return pre
+    SSeq []       -> return pre
+    SSeq (s:ss)   -> spSeq s ss pre
     SAsgn lhs rhs -> spAsgn lhs rhs pre
-    SIf b s1 s2   -> let
-      cond   = bexpToAssertion b
-      postS1 = forwardPT (A.And [pre, cond]) s1
-      postS2 = forwardPT (A.And [pre, A.Not cond]) s2
-      in A.Or [postS1, postS2]
-    SWhile b body (minv, measure) -> let
-      cond = bexpToAssertion b
+    SIf b s1 s2   -> do
+      let cond = bexpToAssertion b
+      postS1 <- forwardPT (A.And [pre, cond]) s1
+      postS2 <- forwardPT (A.And [pre, A.Not cond]) s2
+      return $ A.Or [postS1, postS2]
+    SWhile b body (minv, measure) -> do
+      let cond = bexpToAssertion b
       -- TODO: add invariant vc somehow?
-      in case minv of
-        Nothing  -> A.ATrue
-        Just inv -> A.And [A.Not cond, inv]
+      inv <- case minv of
+        Nothing  -> Houdini.infer (typedNamesIn body) Set.empty 2 pre
+                    (\pre' -> forwardPT pre' body)
+        Just inv -> return inv
+      return $ A.And [A.Not cond, inv]
 
-spAsgn :: Name -> AExp -> Assertion -> Assertion
+typedNamesIn :: Program -> Set TypedName
+typedNamesIn prog = let
+  names = namesIn prog
+  in Set.map (\n -> TypedName n Int) names
+
+spSeq :: Program -> [Program] -> Assertion -> IO Assertion
+spSeq s ss pre = do
+  pre' <- forwardPT pre s
+  forwardPT pre' (SSeq ss)
+
+spAsgn :: Name -> AExp -> Assertion -> IO Assertion
 spAsgn lhs rhs pre = let
   names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
   (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
@@ -206,4 +222,4 @@ spAsgn lhs rhs pre = let
   ilhs      = TypedName lhs  Name.Int
   ilhs'     = TypedName lhs' Name.Int
   subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
-  in A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
+  in return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]

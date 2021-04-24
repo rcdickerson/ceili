@@ -1,3 +1,5 @@
+ {-# LANGUAGE OverloadedStrings #-}
+
 module Ceili.Name
   ( CollectableNames(..)
   , Handle
@@ -19,13 +21,14 @@ module Ceili.Name
   , substituteAllHandles
   ) where
 
+import Ceili.SMTString ( SMTString(..) )
+import qualified Data.ByteString.Char8 as S8
 import Data.List ( intercalate )
 import Data.List.Split ( splitOn )
 import Data.Map ( Map, (!) )
 import qualified Data.Map as Map
 import Data.Set ( Set )
 import qualified Data.Set as Set
-import Ceili.ToSMT ( ToSMT(..) )
 
 -----------
 -- Names --
@@ -52,9 +55,9 @@ instance MappableNames Name where
 instance MappableNames a => MappableNames [a] where
   mapNames f = map (mapNames f)
 
-instance ToSMT Name where
-  toSMT (Name h 0) = h
-  toSMT (Name h i) = h ++ "!" ++ (show i)
+instance SMTString Name where
+  toSMT (Name h 0) = S8.pack h
+  toSMT (Name h i) = (S8.pack h) <> "!" <> (S8.pack $ show i)
 
 liftHandleMap :: (String -> String) -> Name -> Name
 liftHandleMap f (Name h i) = Name (f h) i
@@ -136,10 +139,10 @@ data Type = Bool
           | Int
           deriving (Show, Eq, Ord)
 
-instance ToSMT Type where
+instance SMTString Type where
   toSMT ty = case ty of
-    Bool -> "bool"
-    Int  -> "int"
+    Bool -> "Bool"
+    Int  -> "Int"
 
 data TypedName = TypedName { tnName :: Name
                            , tnType :: Type
@@ -151,5 +154,5 @@ instance CollectableNames TypedName where
 instance MappableNames TypedName where
   mapNames f (TypedName name ty) = TypedName (f name) ty
 
-instance ToSMT TypedName where
-  toSMT (TypedName name ty) = "(" ++ toSMT name ++ " " ++ toSMT ty ++ ")"
+instance SMTString TypedName where
+  toSMT (TypedName name ty) = "(" <> toSMT name <> " " <> toSMT ty <> ")"
