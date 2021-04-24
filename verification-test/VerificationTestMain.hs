@@ -4,6 +4,7 @@ module VerificationTestMain where
 import Test.Framework
 
 import Ceili.Assertion ( Arith(..), Assertion(..) )
+import Ceili.CeiliEnv
 import qualified Ceili.Language.Imp as Imp
 import Ceili.Language.ImpParser
 import Ceili.Name
@@ -26,9 +27,12 @@ assertVerifierResultMatches expected result =
 parseAndTest pre progStr post expected = case parseImp progStr of
   Left  err     -> assertFailure $ "Parse error: " ++ (show err)
   Right program -> do
-    sp <- Imp.forwardPT pre program
-    result <- SMT.checkValid $ Imp sp post
-    assertVerifierResultMatches expected result
+    spOrErr <- runCeili defaultEnv $ Imp.forwardPT pre program
+    case spOrErr of
+      Left err     -> assertFailure $ show err
+      Right sp -> do
+        result <- SMT.checkValid $ Imp sp post
+        assertVerifierResultMatches expected result
 
 readImpFile fileName = do
   readFile $ "verification-test"

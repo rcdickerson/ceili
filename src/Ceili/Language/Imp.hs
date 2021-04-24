@@ -13,6 +13,7 @@ module Ceili.Language.Imp
 import qualified Data.Set  as Set
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
+import Ceili.CeiliEnv ( Ceili )
 import qualified Ceili.InvariantInference.Houdini as Houdini
 import Ceili.Name ( CollectableNames(..)
                   , MappableNames(..)
@@ -22,7 +23,6 @@ import Ceili.Name ( CollectableNames(..)
 import qualified Ceili.Name as Name
 import Ceili.PTS.ForwardPT ( ForwardPT )
 import Data.Set ( Set )
-import qualified Data.Set as Set
 
 
 ----------------------------
@@ -208,12 +208,12 @@ typedNamesIn prog = let
   names = namesIn prog
   in Set.map (\n -> TypedName n Int) names
 
-spSeq :: Program -> [Program] -> Assertion -> IO Assertion
+spSeq :: Program -> [Program] -> Assertion -> Ceili Assertion
 spSeq s ss pre = do
   pre' <- forwardPT pre s
   forwardPT pre' (SSeq ss)
 
-spAsgn :: Name -> AExp -> Assertion -> IO Assertion
+spAsgn :: Name -> AExp -> Assertion -> Ceili Assertion
 spAsgn lhs rhs pre = let
   names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
   (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names

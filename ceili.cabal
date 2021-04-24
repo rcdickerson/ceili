@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e58eff968c2af19af9c23c40047392cfe784b9903f138ea2a5042d049460e322
+-- hash: 2dbb00cf038d00527abb8e8cfa8b25ff1f468e737f123e5d419b276d8c18f14b
 
 name:           ceili
 version:        0.1.0.0
@@ -30,6 +30,7 @@ library
       Ceili.Assertion
       Ceili.Assertion.AssertionLanguage
       Ceili.Assertion.AssertionParser
+      Ceili.CeiliEnv
       Ceili.InvariantInference.Houdini
       Ceili.InvariantInference.LinearInequalities
       Ceili.Language.Imp
@@ -47,9 +48,11 @@ library
     , bytestring
     , containers
     , filepath
+    , mtl
     , parsec
     , simple-smt
     , split
+    , transformers
     , unbounded-delays
   default-language: Haskell2010
 
@@ -67,9 +70,11 @@ executable ceili-verification-test
     , ceili
     , containers
     , filepath
+    , mtl
     , parsec
     , simple-smt
     , split
+    , transformers
     , unbounded-delays
   default-language: Haskell2010
 
@@ -77,7 +82,6 @@ test-suite ceili-test
   type: exitcode-stdio-1.0
   main-is: TestMain.hs
   other-modules:
-      Ceili.AssertionGen
       Ceili.AssertionTest
       Ceili.Language.ImpParserTest
       Ceili.Language.ImpTest
@@ -93,8 +97,10 @@ test-suite ceili-test
     , ceili
     , containers
     , filepath
+    , mtl
     , parsec
     , simple-smt
     , split
+    , transformers
     , unbounded-delays
   default-language: Haskell2010

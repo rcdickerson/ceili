@@ -4,6 +4,7 @@ module Ceili.Language.ImpTest(htf_thisModulesTests) where
 import Test.Framework
 
 import Ceili.Assertion
+import Ceili.CeiliEnv
 import Ceili.Language.Imp
 import Ceili.Name
 
@@ -18,16 +19,17 @@ prog1 = SSeq [ SAsgn x $ ALit 5
                (SAsgn y $ ALit 1)
              ]
 
-test_forwardPT = let
-  expectedP = parseAssertion $
-   "(or \
-   \ (exists ((y!1 int)) \
-   \   (and (= y 0)      \
-   \        (and (exists ((x!1 int)) (and (= x 5) true)) (< x 0)))) \
-   \ (exists ((y!1 int)) \
-   \   (and (= y 1)      \
-   \        (and (exists ((x!1 int)) (and (= x 5) true)) (not (< x 0))))))"
-  actual = forwardPT ATrue prog1
-  in case expectedP of
-    Left err       -> assertFailure $ show err
-    Right expected -> assertEqual expected actual
+test_forwardPT = do
+  let expectedE = parseAssertion $
+        "(or \
+        \ (exists ((y!1 int)) \
+        \   (and (= y 0)      \
+        \        (and (exists ((x!1 int)) (and (= x 5) true)) (< x 0)))) \
+        \ (exists ((y!1 int)) \
+        \   (and (= y 1)      \
+        \        (and (exists ((x!1 int)) (and (= x 5) true)) (not (< x 0))))))"
+  actualE <- runCeili defaultEnv $ forwardPT ATrue prog1
+  case (expectedE, actualE) of
+    (Left err, _)  -> assertFailure $ show err
+    (_, Left err)  -> assertFailure $ show err
+    (Right expected, Right actual) -> assertEqual expected actual

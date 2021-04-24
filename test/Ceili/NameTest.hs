@@ -4,7 +4,7 @@ module Ceili.NameTest(htf_thisModulesTests) where
 import Test.Framework
 
 import Ceili.Name
-import Ceili.ToSMT
+import Ceili.SMTString
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -58,17 +58,17 @@ test_fromString = do
   assertEqual (Name "x!" 0) $ fromString "x!"
   assertEqual (Name "x!1!2!3" 4) $ fromString "x!1!2!3!4"
 
-test_name_toSMT = do
-  assertEqual "x" (toSMT $ Name "x" 0)
-  assertEqual "x!0" (toSMT $ Name "x!0" 0)
-  assertEqual "x0" (toSMT $ Name "x0" 0)
-  assertEqual "x!1" (toSMT $ Name "x" 1)
-  assertEqual "x1" (toSMT $ Name "x1" 0)
-  assertEqual "x!1!0" (toSMT $ Name "x!1!0" 0)
-  assertEqual "x!1!1" (toSMT $ Name "x!1" 1)
-  assertEqual "x!" (toSMT $ Name "x!" 0)
-  assertEqual "x!!2" (toSMT $ Name "x!" 2)
-  assertEqual "x!1!2!3!4" (toSMT $ Name "x!1!2!3" 4)
+test_name_showSMT = do
+  assertEqual "x" (showSMT $ Name "x" 0)
+  assertEqual "x!0" (showSMT $ Name "x!0" 0)
+  assertEqual "x0" (showSMT $ Name "x0" 0)
+  assertEqual "x!1" (showSMT $ Name "x" 1)
+  assertEqual "x1" (showSMT $ Name "x1" 0)
+  assertEqual "x!1!0" (showSMT $ Name "x!1!0" 0)
+  assertEqual "x!1!1" (showSMT $ Name "x!1" 1)
+  assertEqual "x!" (showSMT $ Name "x!" 0)
+  assertEqual "x!!2" (showSMT $ Name "x!" 2)
+  assertEqual "x!1!2!3!4" (showSMT $ Name "x!1!2!3" 4)
 
 test_prefix = let
   names = [ x0, x1, x5, y0, z0 ]
@@ -143,7 +143,7 @@ test_mappableNames_typedName =
 test_collectableNames_typedName =
   assertEqual (Set.singleton x0) $ namesIn x0Int
 
-test_toSMT_typedName = do
-  assertEqual "(x int)" $ toSMT x0Int
-  assertEqual "(x!1 int)" $ toSMT x1Int
-  assertEqual "(x bool)" $ toSMT x0Bool
+test_showSMT_typedName = do
+  assertEqual "(x Int)" $ showSMT x0Int
+  assertEqual "(x!1 Int)" $ showSMT x1Int
+  assertEqual "(x Bool)" $ showSMT x0Bool

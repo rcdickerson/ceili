@@ -5,8 +5,8 @@ import Test.Framework
 
 import qualified Data.Set as Set
 import Ceili.Assertion
-import Ceili.AssertionGen()
 import Ceili.Name
+import Ceili.SMTString
 
 -- Some dummy names and assertions for convenience.
 x0 = TypedName (Name "x" 0) Int
@@ -22,21 +22,21 @@ assertion1 = Not $ And [ Eq (Var x0) (Add [Num 5, Var y0])
 assertion1SMT = "(not (and (= x (+ 5 y)) (< x!1 x!2)))"
 
 assertion2 = Forall [x0, y0] $ Exists [x1] $ Lt (Var x1) (Var x2)
-assertion2SMT = "(forall ((x int) (y int)) (exists ((x!1 int)) (< x!1 x!2)))"
+assertion2SMT = "(forall ((x Int) (y Int)) (exists ((x!1 Int)) (< x!1 x!2)))"
 
 assertion3 = And [And [Exists [TypedName (Name "z" 5990) Int]
                        (Imp (Atom sc8875) AFalse)]]
-assertion3SMT = "(and (and (exists ((z!5990 int)) (=> SC!8875 false))))"
+assertion3SMT = "(and (and (exists ((z!5990 Int)) (=> SC!8875 false))))"
 
 test_freeVars = do
   assertEqual (Set.fromList [x0, x1, x2, y0]) (freeVars assertion1)
   assertEqual (Set.fromList [x2]) (freeVars assertion2)
 
-test_toSMT = do
-  assertEqual assertion1SMT $ toSMT assertion1
-  assertEqual assertion2SMT $ toSMT assertion2
-  assertEqual assertion3SMT $ toSMT assertion3
-  assertEqual "(< -1 1)" $ toSMT (Lt (Num (-1)) (Num 1))
+test_showSMT = do
+  assertEqual assertion1SMT $ showSMT assertion1
+  assertEqual assertion2SMT $ showSMT assertion2
+  assertEqual assertion3SMT $ showSMT assertion3
+  assertEqual "(< -1 1)" $ showSMT (Lt (Num (-1)) (Num 1))
 
 test_parseAssertion = do
   assertEqual (Right assertion1) $ parseAssertion assertion1SMT
