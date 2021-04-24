@@ -12,7 +12,12 @@ import Control.Monad.IO.Class ( liftIO )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
-infer :: Set TypedName -> Set Integer -> Int -> Assertion -> (Assertion -> IO Assertion) -> IO Assertion
+infer :: Set TypedName
+      -> Set Integer
+      -> Int
+      -> Assertion
+      -> (Assertion -> IO Assertion)
+      -> IO Assertion
 infer names lits size precond computeSP = do
   candidates <- findCandidates names lits size precond
   inductive  <- houdini candidates computeSP
@@ -31,7 +36,9 @@ houdini :: [Assertion]
         -> (Assertion -> IO Assertion)
         -> IO [Assertion]
 houdini candidates computeSP = do
-  hLog $ "Starting houdini pass with " ++ (show $ length candidates) ++ " candidate clauses."
+  hLog $ "Starting houdini pass with "
+    ++ (show $ length candidates)
+    ++ " candidate clauses."
   sp <- computeSP $ And $ candidates
   inductive <- filterM (checkValid . Imp sp) candidates
   if (length inductive == length candidates)

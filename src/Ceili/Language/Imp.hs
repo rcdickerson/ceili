@@ -150,7 +150,7 @@ data Program
   | SAsgn  Name AExp
   | SSeq   [Program]
   | SIf    BExp Program Program
-  | SWhile BExp Program (Invariant, Measure)
+  | SWhile BExp Program (Maybe Invariant, Maybe Measure)
   deriving (Eq, Ord, Show)
 
 instance CollectableNames Program where
@@ -169,7 +169,7 @@ instance MappableNames Program where
     SSkip        -> SSkip
     SAsgn v aexp -> SAsgn (f v) (mapNames f aexp)
     SSeq stmts   -> SSeq $ map (mapNames f) stmts
-    SIf b t e    -> SIf (mapNames f b) (mapNames f t) (mapNames f e)
+    SIf b t  e    -> SIf (mapNames f b) (mapNames f t) (mapNames f e)
     SWhile cond body (inv, var)
                  -> SWhile (mapNames f cond) (mapNames f body) (inv, var)
 
@@ -190,10 +190,12 @@ forwardPT pre prog = do
       postS1 = forwardPT (A.And [pre, cond]) s1
       postS2 = forwardPT (A.And [pre, A.Not cond]) s2
       in A.Or [postS1, postS2]
-    SWhile b body (inv, measure) -> let
+    SWhile b body (minv, measure) -> let
       cond = bexpToAssertion b
       -- TODO: add invariant vc somehow?
-      in A.And [A.Not cond, inv]
+      in case minv of
+        Nothing  -> A.ATrue
+        Just inv -> A.And [A.Not cond, inv]
 
 spAsgn :: Name -> AExp -> Assertion -> Assertion
 spAsgn lhs rhs pre = let
