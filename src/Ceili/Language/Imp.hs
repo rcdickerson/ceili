@@ -8,7 +8,6 @@ module Ceili.Language.Imp
   , Measure
   , Name(..)
   , ImpProgram
-  , ImpProgram_
   , SAsgn(..)
   , SIf(..)
   , SSeq(..)
