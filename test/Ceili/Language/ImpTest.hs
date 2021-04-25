@@ -13,10 +13,10 @@ y = Name "y" 0
 ix = TypedName x Int
 iy = TypedName y Int
 
-prog1 = SSeq [ SAsgn x $ ALit 5
-             , SIf (BLt (AVar x) (ALit 0))
-               (SAsgn y $ ALit 0)
-               (SAsgn y $ ALit 1)
+prog1 = sseq [ sasgn x $ ALit 5
+             , sif (BLt (AVar x) (ALit 0))
+               (sasgn y $ ALit 0)
+               (sasgn y $ ALit 1)
              ]
 
 test_forwardPT = do

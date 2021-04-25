@@ -1,19 +1,32 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Ceili.Language.Imp
   ( AExp(..)
   , BExp(..)
   , Invariant
   , Measure
   , Name(..)
-  , Program(..)
+  , ImpProgram
+  , ImpProgram_
+  , SAsgn(..)
+  , SIf(..)
+  , SSeq(..)
+  , SSkip(..)
+  , SWhile(..)
   , aexpToArith
+  , asImpProgram
   , bexpToAssertion
   , forwardPT
+  , sasgn
+  , sif
+  , sseq
+  , sskip
+  , swhile
   ) where
 
-import qualified Data.Set  as Set
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
-import Ceili.CeiliEnv ( Ceili )
 import qualified Ceili.CeiliEnv as Env
 import qualified Ceili.InvariantInference.Houdini as Houdini
 import Ceili.Name ( CollectableNames(..)
@@ -22,9 +35,11 @@ import Ceili.Name ( CollectableNames(..)
                   , TypedName(..)
                   , Type(..) )
 import qualified Ceili.Name as Name
-import Ceili.PTS.ForwardPT ( ForwardPT )
+import Ceili.PTS.ForwardPT ( ForwardPT(..) )
 import Ceili.SMTString ( showSMT )
 import Data.Set ( Set )
+import qualified Data.Set  as Set
+import Data.Typeable ( Typeable, cast )
 
 
 ----------------------------
@@ -151,82 +166,143 @@ bexpToAssertion bexp = case bexp of
 type Invariant = Assertion
 type Measure   = A.Arith
 
-data Program
-  = SSkip
-  | SAsgn  Name AExp
-  | SSeq   [Program]
-  | SIf    BExp Program Program
-  | SWhile BExp Program (Maybe Invariant, Maybe Measure)
-  deriving (Eq, Ord, Show)
+class ( CollectableNames p
+      , MappableNames p
+      , Eq p, Show p
+      , Typeable p
+      , ForwardPT p
+      ) => ImpProgram_ p
 
-instance CollectableNames Program where
-  namesIn prog = case prog of
-    SSkip                   -> Set.empty
-    SAsgn  var aexp         -> Set.insert var $ namesIn aexp
-    SSeq   []               -> Set.empty
-    SSeq   (s:ss)           -> Set.union (namesIn s) (namesIn $ SSeq ss)
-    SIf    cond bThen bElse -> Set.unions [ (namesIn cond)
-                                          , (namesIn bThen)
-                                          , (namesIn bElse)]
-    SWhile cond body _      -> Set.union (namesIn cond) (namesIn body)
+data ImpProgram = forall p. ImpProgram_ p => ImpProgram p
+instance CollectableNames ImpProgram where
+  namesIn (ImpProgram p) = namesIn p
+instance MappableNames ImpProgram where
+  mapNames f (ImpProgram p) = ImpProgram $ mapNames f p
+instance ForwardPT ImpProgram where
+  forwardPT pre (ImpProgram p) = forwardPT pre p
+instance Eq ImpProgram where
+  (ImpProgram p1) == (ImpProgram p2) = Just p1 == cast p2
+instance Show ImpProgram where
+  show (ImpProgram p) = show p
 
-instance MappableNames Program where
-  mapNames f prog = case prog of
-    SSkip        -> SSkip
-    SAsgn v aexp -> SAsgn (f v) (mapNames f aexp)
-    SSeq stmts   -> SSeq $ map (mapNames f) stmts
-    SIf b t  e    -> SIf (mapNames f b) (mapNames f t) (mapNames f e)
-    SWhile cond body (inv, var)
-                 -> SWhile (mapNames f cond) (mapNames f body) (inv, var)
+asImpProgram :: ImpProgram_ p => p -> ImpProgram
+asImpProgram = ImpProgram
+
+data SSkip  = SSkip
+data SAsgn  = SAsgn Name AExp
+data SSeq   = SSeq [ImpProgram]
+data SIf    = SIf BExp ImpProgram ImpProgram
+data SWhile = SWhile BExp ImpProgram (Maybe Invariant, Maybe Measure)
+
+instance ImpProgram_ SSkip
+instance ImpProgram_ SAsgn
+instance ImpProgram_ SSeq
+instance ImpProgram_ SIf
+instance ImpProgram_ SWhile
+
+sskip :: ImpProgram
+sskip = asImpProgram SSkip
+
+sasgn :: Name -> AExp -> ImpProgram
+sasgn name aexp = asImpProgram $ SAsgn name aexp
+
+sseq :: [ImpProgram] -> ImpProgram
+sseq = asImpProgram . SSeq
+
+sif :: BExp -> ImpProgram -> ImpProgram -> ImpProgram
+sif bexp t e = asImpProgram $ SIf bexp t e
+
+swhile :: BExp -> ImpProgram -> (Maybe Invariant, Maybe Measure) -> ImpProgram
+swhile bexp body iv = asImpProgram $ SWhile bexp body iv
+
+deriving instance Eq SSkip
+deriving instance Eq SAsgn
+deriving instance Eq SSeq
+deriving instance Eq SIf
+deriving instance Eq SWhile
+
+deriving instance Show SSkip
+deriving instance Show SAsgn
+deriving instance Show SSeq
+deriving instance Show SIf
+deriving instance Show SWhile
+
+instance CollectableNames SSkip where
+  namesIn SSkip = Set.empty
+instance CollectableNames SAsgn where
+  namesIn (SAsgn var aexp) = Set.insert var $ namesIn aexp
+instance CollectableNames SSeq where
+  namesIn (SSeq stmts) = namesIn stmts
+instance CollectableNames SIf where
+  namesIn (SIf cond bThen bElse) = Set.unions
+    [ (namesIn cond), (namesIn bThen), (namesIn bElse)]
+instance CollectableNames SWhile where
+  namesIn (SWhile cond body _) = Set.union (namesIn cond) (namesIn body)
+
+instance MappableNames SSkip where
+  mapNames _ SSkip = SSkip
+instance MappableNames SAsgn where
+  mapNames f (SAsgn var aexp) = SAsgn (f var) (mapNames f aexp)
+instance MappableNames SSeq where
+  mapNames f (SSeq stmts) = SSeq $ map (mapNames f) stmts
+instance MappableNames SIf where
+  mapNames f (SIf c t e) = SIf (mapNames f c) (mapNames f t) (mapNames f e)
+instance MappableNames SWhile where
+  mapNames f (SWhile cond body (invar, meas)) =
+    SWhile (mapNames f cond)
+           (mapNames f body)
+           (mapNames f invar, mapNames f meas)
 
 
---------------------------
--- Predicate Transforms --
---------------------------
+---------------------------------
+-- Forward Predicate Transform --
+---------------------------------
 
-forwardPT :: ForwardPT Program
-forwardPT pre prog = do
-  case prog of
-    SSkip         -> return pre
-    SSeq []       -> return pre
-    SSeq (s:ss)   -> spSeq s ss pre
-    SAsgn lhs rhs -> spAsgn lhs rhs pre
-    SIf b s1 s2   -> do
-      let cond = bexpToAssertion b
-      postS1 <- forwardPT (A.And [pre, cond]) s1
-      postS2 <- forwardPT (A.And [pre, A.Not cond]) s2
-      return $ A.Or [postS1, postS2]
-    SWhile b body (minv, _) -> do
-      let cond = bexpToAssertion b
-      let computeBodySP pre' = forwardPT pre' body
-      inv <- case minv of
-        Nothing  -> Houdini.infer (typedNamesIn body) Set.empty 2 pre computeBodySP
-        Just inv -> return inv
-      bodyInvSP <- computeBodySP inv
-      Env.log_d "Checking loop invariant verification conditions..."
-      vcCheck <- Env.checkValid $ A.And [ A.Imp pre inv, A.Imp bodyInvSP inv ]
-      if vcCheck
-        then do Env.log_d "Loop invariant verification conditions passed."
-                return $ A.And [A.Not cond, inv]
-        else Env.throwError $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
+instance ForwardPT SSkip where
+  forwardPT pre SSkip = return pre
 
-typedNamesIn :: Program -> Set TypedName
-typedNamesIn prog = let
-  names = namesIn prog
-  in Set.map (\n -> TypedName n Int) names
+instance ForwardPT SAsgn where
+  forwardPT pre (SAsgn lhs rhs) = let
+    names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
+    (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
+    subPre    = Name.substitute lhs lhs' pre
+    rhsArith  = aexpToArith rhs
+    ilhs      = TypedName lhs  Name.Int
+    ilhs'     = TypedName lhs' Name.Int
+    subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
+    in return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
 
-spSeq :: Program -> [Program] -> Assertion -> Ceili Assertion
-spSeq s ss pre = do
-  pre' <- forwardPT pre s
-  forwardPT pre' (SSeq ss)
+instance ForwardPT SSeq where
+  forwardPT pre (SSeq stmts) = case stmts of
+    []     -> return pre
+    (s:ss) -> do
+      pre' <- forwardPT pre s
+      forwardPT pre' (SSeq ss)
 
-spAsgn :: Name -> AExp -> Assertion -> Ceili Assertion
-spAsgn lhs rhs pre = let
-  names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
-  (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
-  subPre    = Name.substitute lhs lhs' pre
-  rhsArith  = aexpToArith rhs
-  ilhs      = TypedName lhs  Name.Int
-  ilhs'     = TypedName lhs' Name.Int
-  subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
-  in return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
+instance ForwardPT SIf where
+  forwardPT pre (SIf b s1 s2) = do
+    let cond = bexpToAssertion b
+    postS1 <- forwardPT (A.And [pre, cond]) s1
+    postS2 <- forwardPT (A.And [pre, A.Not cond]) s2
+    return $ A.Or [postS1, postS2]
+
+instance ForwardPT SWhile where
+  forwardPT pre (SWhile b body (minv, _)) = do
+    let cond = bexpToAssertion b
+    let bodySP pre' = forwardPT pre' body
+    inv <- case minv of
+      Nothing  -> Houdini.infer (namesInToInt body) Set.empty 2 pre bodySP
+      Just inv -> return inv
+    bodyInvSP <- bodySP inv
+    Env.log_d "Checking loop invariant verification conditions..."
+    vcCheck <- Env.checkValid $ A.And [ A.Imp pre inv, A.Imp bodyInvSP inv ]
+    if vcCheck
+      then do Env.log_d "Loop invariant verification conditions passed."
+              return $ A.And [A.Not cond, inv]
+      else Env.throwError
+           $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
+
+namesInToInt :: CollectableNames c => c -> Set TypedName
+namesInToInt c = let
+   names = namesIn c
+   in Set.map (\n -> TypedName n Int) names

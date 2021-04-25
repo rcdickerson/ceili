@@ -1,9 +1,9 @@
 module Ceili.PTS.ForwardPT
-  ( ForwardPT
+  ( ForwardPT(..)
   ) where
 
 import Ceili.Assertion ( Assertion )
 import Ceili.CeiliEnv ( Ceili )
 
--- TODO: Replace IO with better monad.
-type ForwardPT p = Assertion -> p -> Ceili Assertion
+class ForwardPT p where
+  forwardPT :: Assertion -> p -> Ceili Assertion

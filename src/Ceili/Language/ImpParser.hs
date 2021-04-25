@@ -1,6 +1,8 @@
 -- A simple Imp parser with specified uninterpreted functions.
 -- Based on https://wiki.haskell.org/Parsing_a_simple_imperative_language
 
+{-# LANGUAGE GADTs #-}
+
 module Ceili.Language.ImpParser
   ( ParseError
   , parseImp
@@ -52,42 +54,56 @@ comma      = Token.comma      lexer
 semi       = Token.semi       lexer
 whiteSpace = Token.whiteSpace lexer
 
-type ImpParser a   = Parsec String () a
-type ProgramParser = ImpParser Program
+type ImpParser a = Parsec String () a
+type ProgramParser = ImpParser ImpProgram
 
-parseImp :: String -> Either ParseError Program
+parseImp :: String -> Either ParseError ImpProgram
 parseImp str = runParser program () "" str
 
-sseq :: [Program] -> Program
-sseq stmts = case stmts of
-  []   -> SSkip
+seqList :: [ImpProgram] -> ImpProgram
+seqList stmts = case stmts of
+  []   -> sskip
   s:[] -> s
-  ss   -> SSeq ss
+  ss   -> sseq ss
 
 program :: ProgramParser
 program = do
   stmts <- many1 $ whiteSpace >> statement
-  return $ sseq stmts
+  return $ seqList stmts
 
 statement :: ProgramParser
-statement =   ifStmt
-          <|> whileStmt
-          <|> skipStmt
-          <|> assignStmt
+statement =   parseIf
+          <|> parseWhile
+          <|> parseSkip
+          <|> parseAsgn
           <|> parens statement
 
-ifStmt :: ProgramParser
-ifStmt = do
+name :: ImpParser Name
+name = identifier >>= (return . Name.fromString)
+
+parseSkip :: ProgramParser
+parseSkip = reserved "skip" >> semi >> return sskip
+
+parseAsgn :: ProgramParser
+parseAsgn = do
+  var <- name
+  reservedOp ":="
+  expr <- aExpression
+  _ <- semi
+  return $ sasgn var expr
+
+parseIf :: ProgramParser
+parseIf = do
   reserved "if"
   cond  <- bExpression
   reserved "then"
   tbranch <- many1 statement
-  ebranch <- option [SSkip] $ (reserved "else" >>= \_ -> many1 statement)
+  ebranch <- option [] $ (reserved "else" >>= \_ -> many1 statement)
   reserved "endif"
-  return $ SIf cond (sseq tbranch) (sseq ebranch)
+  return $ sif cond (seqList tbranch) (seqList ebranch)
 
-whileStmt :: ProgramParser
-whileStmt = do
+parseWhile :: ProgramParser
+parseWhile = do
   reserved "while"
   cond  <- bExpression
   whiteSpace
@@ -108,22 +124,7 @@ whileStmt = do
   body  <- many1 $ try statement
   whiteSpace
   reserved "end"
-  let while = SWhile cond (sseq body) (inv, var)
-  return while
-
-name :: ImpParser Name
-name = identifier >>= (return . Name.fromString)
-
-assignStmt :: ProgramParser
-assignStmt = do
-  var <- name
-  reservedOp ":="
-  expr <- aExpression
-  _ <- semi
-  return $ SAsgn var expr
-
-skipStmt :: ProgramParser
-skipStmt = reserved "skip" >> semi >> return SSkip
+  return $ swhile cond (seqList body) (inv, var)
 
 aExpression :: ImpParser AExp
 aExpression = buildExpressionParser aOperators aTerm

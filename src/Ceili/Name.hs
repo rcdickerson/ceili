@@ -1,4 +1,5 @@
- {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Ceili.Name
   ( CollectableNames(..)
@@ -30,6 +31,21 @@ import qualified Data.Map as Map
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
+
+class CollectableNames a where
+  namesIn :: a -> Set Name
+
+class MappableNames a where
+  mapNames :: (Name -> Name) -> a -> a
+
+instance (Functor f, Foldable f, CollectableNames a) =>
+  CollectableNames (f a) where
+    namesIn as = Set.unions $ fmap namesIn as
+
+instance (Functor f, MappableNames a) => MappableNames (f a) where
+  mapNames f = fmap (mapNames f)
+
+
 -----------
 -- Names --
 -----------
@@ -40,20 +56,11 @@ data Name   = Name { nHandle :: Handle
                    , nId     :: Id
                    } deriving (Show, Eq, Ord)
 
-class CollectableNames a where
-  namesIn :: a -> Set Name
-
-class MappableNames a where
-  mapNames :: (Name -> Name) -> a -> a
-
 instance CollectableNames Name where
   namesIn = Set.singleton
 
 instance MappableNames Name where
   mapNames = ($)
-
-instance MappableNames a => MappableNames [a] where
-  mapNames f = map (mapNames f)
 
 instance SMTString Name where
   toSMT (Name h 0) = S8.pack h
