@@ -1,4 +1,4 @@
--- A simple Imp parser with specified uninterpreted functions.
+-- A simple Imp parser.
 -- Based on https://wiki.haskell.org/Parsing_a_simple_imperative_language
 
 {-# LANGUAGE GADTs #-}
@@ -72,11 +72,11 @@ program = do
   return $ seqList stmts
 
 statement :: ProgramParser
-statement =   parseIf
+statement =   parens statement
+          <|> parseIf
           <|> parseWhile
           <|> parseSkip
           <|> parseAsgn
-          <|> parens statement
 
 name :: ImpParser Name
 name = identifier >>= (return . Name.fromString)
