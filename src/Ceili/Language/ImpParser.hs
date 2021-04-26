@@ -1,8 +1,6 @@
 -- A simple Imp parser.
 -- Based on https://wiki.haskell.org/Parsing_a_simple_imperative_language
 
-{-# LANGUAGE GADTs #-}
-
 module Ceili.Language.ImpParser
   ( ParseError
   , parseImp

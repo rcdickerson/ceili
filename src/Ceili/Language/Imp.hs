@@ -6,15 +6,15 @@
 module Ceili.Language.Imp
   ( AExp(..)
   , BExp(..)
-  , Invariant
-  , Measure
-  , Name(..)
   , ImpAsgn(..)
   , ImpIf(..)
   , ImpProgram
   , ImpSeq(..)
   , ImpSkip(..)
   , ImpWhile(..)
+  , Invariant
+  , Measure
+  , Name(..)
   , forwardPT
   , impAsgn
   , impIf
