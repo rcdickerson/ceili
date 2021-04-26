@@ -62,9 +62,9 @@ parseImp str = runParser program () "" str
 
 seqList :: [ImpProgram] -> ImpProgram
 seqList stmts = case stmts of
-  []   -> sskip
+  []   -> impSkip
   s:[] -> s
-  ss   -> sseq ss
+  ss   -> impSeq ss
 
 program :: ProgramParser
 program = do
@@ -82,7 +82,7 @@ name :: ImpParser Name
 name = identifier >>= (return . Name.fromString)
 
 parseSkip :: ProgramParser
-parseSkip = reserved "skip" >> semi >> return sskip
+parseSkip = reserved "skip" >> semi >> return impSkip
 
 parseAsgn :: ProgramParser
 parseAsgn = do
@@ -90,7 +90,7 @@ parseAsgn = do
   reservedOp ":="
   expr <- aExpression
   _ <- semi
-  return $ sasgn var expr
+  return $ impAsgn var expr
 
 parseIf :: ProgramParser
 parseIf = do
@@ -100,7 +100,7 @@ parseIf = do
   tbranch <- many1 statement
   ebranch <- option [] $ (reserved "else" >>= \_ -> many1 statement)
   reserved "endif"
-  return $ sif cond (seqList tbranch) (seqList ebranch)
+  return $ impIf cond (seqList tbranch) (seqList ebranch)
 
 parseWhile :: ProgramParser
 parseWhile = do
@@ -124,7 +124,7 @@ parseWhile = do
   body  <- many1 $ try statement
   whiteSpace
   reserved "end"
-  return $ swhile cond (seqList body) (inv, var)
+  return $ impWhile cond (seqList body) (inv, var)
 
 aExpression :: ImpParser AExp
 aExpression = buildExpressionParser aOperators aTerm

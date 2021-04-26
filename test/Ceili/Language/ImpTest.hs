@@ -13,11 +13,10 @@ y = Name "y" 0
 ix = TypedName x Int
 iy = TypedName y Int
 
-prog1 = sseq [ sasgn x $ ALit 5
-             , sif (BLt (AVar x) (ALit 0))
-               (sasgn y $ ALit 0)
-               (sasgn y $ ALit 1)
-             ]
+prog1 = impSeq [ impAsgn x $ ALit 5
+               , impIf (BLt (AVar x) (ALit 0))
+                       (impAsgn y $ ALit 0)
+                       (impAsgn y $ ALit 1) ]
 
 test_forwardPT = do
   let expectedE = parseAssertion $
@@ -33,3 +32,11 @@ test_forwardPT = do
     (Left err, _)  -> assertFailure $ show err
     (_, Left err)  -> assertFailure $ show err
     (Right expected, Right actual) -> assertEqual expected actual
+
+test_mapNames = do
+  let expected = impSeq [ impAsgn (Name "x!foo" 0) $ ALit 5
+                        , impIf (BLt (AVar (Name "x!foo" 0)) (ALit 0))
+                                (impAsgn (Name "y!foo" 0) $ ALit 0)
+                                (impAsgn (Name "y!foo" 0) $ ALit 1) ]
+  let actual = mapNames (\(Name n i) -> Name (n ++ "!foo") i) prog1
+  assertEqual expected actual
