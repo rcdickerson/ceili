@@ -3,14 +3,18 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Ceili.Language.FunImp
-  ( FunImplEnv
+  ( FunImpl(..)
+  , FunImpCall(..)
+  , FunImplEnv
   , FunImpProgram
+  , FunImpProgram_
   , fimpAsgn
   , fimpCall
   , fimpIf
   , fimpSeq
   , fimpSkip
   , fimpWhile
+  , packFunImp
   ) where
 
 import qualified Ceili.Language.Imp as Imp
@@ -31,8 +35,8 @@ class ( CollectableNames p
 
 data FunImpProgram = forall p. FunImpProgram_ p => FunImpProgram p
 
-pack :: FunImpProgram_ p => p -> FunImpProgram
-pack = FunImpProgram
+packFunImp :: FunImpProgram_ p => p -> FunImpProgram
+packFunImp = FunImpProgram
 
 instance Eq FunImpProgram where
   (FunImpProgram p1) == (FunImpProgram p2) = Just p1 == cast p2
@@ -47,26 +51,29 @@ instance MappableNames FunImpProgram where
 instance FunImpProgram_ Imp.ImpSkip
 instance FunImpProgram_ Imp.ImpAsgn
 instance FunImpProgram_ (Imp.ImpSeq FunImpProgram)
+instance FunImpProgram_ (Imp.ImpSeq Imp.ImpProgram)
 instance FunImpProgram_ (Imp.ImpIf FunImpProgram)
+instance FunImpProgram_ (Imp.ImpIf Imp.ImpProgram)
 instance FunImpProgram_ (Imp.ImpWhile FunImpProgram)
+instance FunImpProgram_ (Imp.ImpWhile Imp.ImpProgram)
 
 fimpSkip :: FunImpProgram
-fimpSkip = pack Imp.ImpSkip
+fimpSkip = packFunImp Imp.ImpSkip
 
 fimpAsgn :: Name -> Imp.AExp -> FunImpProgram
-fimpAsgn name aexp = pack $ Imp.ImpAsgn name aexp
+fimpAsgn name aexp = packFunImp $ Imp.ImpAsgn name aexp
 
 fimpSeq :: [FunImpProgram] -> FunImpProgram
-fimpSeq = pack . Imp.ImpSeq
+fimpSeq = packFunImp . Imp.ImpSeq
 
 fimpIf :: Imp.BExp -> FunImpProgram -> FunImpProgram -> FunImpProgram
-fimpIf bexp t e = pack $ Imp.ImpIf bexp t e
+fimpIf bexp t e = packFunImp $ Imp.ImpIf bexp t e
 
 fimpWhile :: Imp.BExp
           -> FunImpProgram
           -> (Maybe Imp.Invariant, Maybe Imp.Measure)
           -> FunImpProgram
-fimpWhile bexp body iv = pack $ Imp.ImpWhile bexp body iv
+fimpWhile bexp body iv = packFunImp $ Imp.ImpWhile bexp body iv
 
 
 ------------------------------
@@ -74,7 +81,7 @@ fimpWhile bexp body iv = pack $ Imp.ImpWhile bexp body iv
 ------------------------------
 
 data FunImpl = FunImpl { fimple_params :: [Name]
-                       , fimpl_body    :: Imp.ImpProgram
+                       , fimpl_body    :: FunImpProgram
                        , fimpl_returns :: [Name]
                        } deriving (Eq, Show)
 
@@ -97,18 +104,18 @@ type FunImplEnv = Map Handle FunImpl
 
 type CallId = String
 
-data SCall = SCall CallId [Imp.AExp] [Name]
-             deriving (Eq, Show)
+data FunImpCall = FunImpCall CallId [Imp.AExp] [Name]
+                deriving (Eq, Show)
 
-instance FunImpProgram_ SCall
+instance FunImpProgram_ FunImpCall
 
 fimpCall :: CallId -> [Imp.AExp] -> [Name] -> FunImpProgram
-fimpCall cid args assignees = pack $ SCall cid args assignees
+fimpCall cid args assignees = packFunImp $ FunImpCall cid args assignees
 
-instance CollectableNames SCall where
-  namesIn (SCall _ args assignees) =
+instance CollectableNames FunImpCall where
+  namesIn (FunImpCall _ args assignees) =
     Set.union (namesIn args) (namesIn assignees)
 
-instance MappableNames SCall where
-  mapNames f (SCall cid args assignees) =
-    SCall cid (map (mapNames f) args) (map f assignees)
+instance MappableNames FunImpCall where
+  mapNames f (FunImpCall cid args assignees) =
+    FunImpCall cid (map (mapNames f) args) (map f assignees)

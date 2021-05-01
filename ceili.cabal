@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 99cab3f6141bfb754a463d9116d712a4e8e1ae30884c7ecfd0770cadacf5ae0d
+-- hash: 4dc889126f3e1aa07090413ec2bb370b9b5d56c45fd310d826ddff66a0e717bb
 
 name:           ceili
 version:        0.1.0.0
@@ -34,8 +34,11 @@ library
       Ceili.InvariantInference.Houdini
       Ceili.InvariantInference.LinearInequalities
       Ceili.Language.AExp
+      Ceili.Language.AExpParser
       Ceili.Language.BExp
+      Ceili.Language.BExpParser
       Ceili.Language.FunImp
+      Ceili.Language.FunImpParser
       Ceili.Language.Imp
       Ceili.Language.ImpParser
       Ceili.Name

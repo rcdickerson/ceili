@@ -8,6 +8,7 @@ module Ceili.Language.Imp
   , BExp(..)
   , ImpAsgn(..)
   , ImpIf(..)
+  , ImpProgram_
   , ImpProgram
   , ImpSeq(..)
   , ImpSkip(..)
@@ -21,6 +22,7 @@ module Ceili.Language.Imp
   , impSeq
   , impSkip
   , impWhile
+  , packImp
   ) where
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
@@ -59,8 +61,8 @@ instance Eq ImpProgram where
 instance Show ImpProgram where
   show (ImpProgram p) = show p
 
-pack :: ImpProgram_ p => p -> ImpProgram
-pack = ImpProgram
+packImp :: ImpProgram_ p => p -> ImpProgram
+packImp = ImpProgram
 
 data ImpSkip    = ImpSkip
 data ImpAsgn    = ImpAsgn Name AExp
@@ -79,19 +81,19 @@ instance Functor ImpSeq where
 deriving instance Foldable ImpSeq
 
 impSkip :: ImpProgram
-impSkip = pack ImpSkip
+impSkip = packImp ImpSkip
 
 impAsgn :: Name -> AExp -> ImpProgram
-impAsgn name aexp = pack $ ImpAsgn name aexp
+impAsgn name aexp = packImp $ ImpAsgn name aexp
 
 impSeq :: [ImpProgram] -> ImpProgram
-impSeq = pack . ImpSeq
+impSeq = packImp . ImpSeq
 
 impIf :: BExp -> ImpProgram -> ImpProgram -> ImpProgram
-impIf bexp t e = pack $ ImpIf bexp t e
+impIf bexp t e = packImp $ ImpIf bexp t e
 
 impWhile :: BExp -> ImpProgram -> (Maybe Invariant, Maybe Measure) -> ImpProgram
-impWhile bexp body iv = pack $ ImpWhile bexp body iv
+impWhile bexp body iv = packImp $ ImpWhile bexp body iv
 
 deriving instance Eq ImpSkip
 deriving instance Eq ImpAsgn
