@@ -43,16 +43,17 @@ reservedOp = Token.reservedOp lexer
 semi       = Token.semi       lexer
 whiteSpace = Token.whiteSpace lexer
 
-parseFunImp :: String -> Either ParseError FunImpProgram
+parseFunImp :: String -> Either ParseError (FunImpProgram, FunImplEnv)
 parseFunImp str = runParser program Map.empty "" str
 
-program :: ProgramParser
+program :: FunImpParser (FunImpProgram, FunImplEnv)
 program = do
   stmts <- many1 $
              whiteSpace >>
              (many $ funDef >> whiteSpace) >>
              statement
-  return $ seqList stmts
+  impls <- getState
+  return (seqList stmts, impls)
 
 seqList :: [FunImpProgram] -> FunImpProgram
 seqList stmts = case stmts of
