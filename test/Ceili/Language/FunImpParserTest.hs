@@ -43,3 +43,13 @@ test_twoFuns = let
                          fimpAsgn (Name "bar!retVal" 0) (AVar y)],
                       fimpl_returns = [Name "bar!retVal" 0]})]
   in assertCorrectParse prog expected
+
+test_funCall = let
+  prog = "fun foo(x) { x := call foo(x); return x; }"
+  expected = Map.fromList
+    [("foo", FunImpl{ fimple_params = [x],
+                      fimpl_body = fimpSeq [
+                         fimpCall "foo" [AVar x] [x],
+                         fimpAsgn (Name "foo!retVal" 0) (AVar x)],
+                      fimpl_returns = [Name "foo!retVal" 0]})]
+  in assertCorrectParse prog expected

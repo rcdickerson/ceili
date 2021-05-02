@@ -44,11 +44,11 @@ program = do
 
 statement :: ProgramParser
 statement = parens statement
+        <|> try funCall
         <|> (impToFunImp $ ImpParser.parseIf lexer)
         <|> (impToFunImp $ ImpParser.parseWhile lexer)
         <|> (impToFunImp $ ImpParser.parseSkip lexer)
         <|> (impToFunImp $ ImpParser.parseAsgn lexer)
-        <|> funCall
 
 impToFunImp :: FunImpProgram_ p => FunImpParser p -> ProgramParser
 impToFunImp impParser = do
