@@ -14,9 +14,10 @@ import Ceili.Language.BExpParser ( parseBExp )
 import Ceili.Language.Imp
 import qualified Ceili.Name as Name
 import Text.Parsec
+import Text.Parsec.Token ( TokenParser )
 import qualified Text.Parsec.Token as Token
 
-impLanguageDef :: Token.LanguageDef a
+impLanguageDef :: Token.LanguageDef s
 impLanguageDef = Token.LanguageDef
   { Token.caseSensitive   = True
   , Token.commentStart    = "/*"
@@ -38,30 +39,21 @@ impLanguageDef = Token.LanguageDef
 
 type ImpParser s a = Parsec String s a
 
-lexer      = Token.makeTokenParser $ impLanguageDef
-braces     = Token.braces     lexer
-identifier = Token.identifier lexer
-integer    = Token.integer    lexer
-parens     = Token.parens     lexer
-reserved   = Token.reserved   lexer
-reservedOp = Token.reservedOp lexer
-semi       = Token.semi       lexer
-whiteSpace = Token.whiteSpace lexer
-
 parseImp :: String -> Either ParseError ImpProgram
 parseImp str = runParser impProgram () "" str
 
 impProgram :: ImpParser s ImpProgram
 impProgram = do
-  stmts <- many1 $ (whiteSpace >> statement)
+  let impLexer = Token.makeTokenParser $ impLanguageDef
+  stmts <- many1 $ (Token.whiteSpace impLexer >> statement impLexer)
   return $ seqList stmts
 
-statement :: ImpParser s ImpProgram
-statement = parens statement
-        <|> progParser parseIf
-        <|> progParser parseWhile
-        <|> progParser parseSkip
-        <|> progParser parseAsgn
+statement :: TokenParser s -> ImpParser s ImpProgram
+statement lexer = (Token.parens lexer $ statement lexer)
+              <|> (progParser $ parseIf lexer)
+              <|> (progParser $ parseWhile lexer)
+              <|> (progParser $ parseSkip lexer)
+              <|> (progParser $ parseAsgn lexer)
 
 seqList :: [ImpProgram] -> ImpProgram
 seqList stmts = case stmts of
@@ -69,55 +61,57 @@ seqList stmts = case stmts of
   s:[] -> s
   ss   -> impSeq ss
 
-parseSkip :: ImpParser s ImpSkip
-parseSkip = reserved "skip" >>
-            semi >>
-            return ImpSkip
+parseSkip :: TokenParser s -> ImpParser s ImpSkip
+parseSkip lexer = do
+  Token.reserved lexer "skip"
+  _ <- Token.semi lexer
+  return ImpSkip
 
-parseAsgn :: ImpParser s ImpAsgn
-parseAsgn = do
-  var <- name
-  reservedOp ":="
+parseAsgn :: TokenParser s -> ImpParser s ImpAsgn
+parseAsgn lexer = do
+  var <- name lexer
+  Token.reservedOp lexer ":="
   expr <- parseAExp
-  _ <- semi
+  _ <- Token.semi lexer
   return $ ImpAsgn var expr
 
-parseIf :: ImpParser s (ImpIf ImpProgram)
-parseIf = do
-  reserved "if"
+parseIf :: TokenParser s -> ImpParser s (ImpIf ImpProgram)
+parseIf lexer = do
+  Token.reserved lexer "if"
   cond  <- parseBExp
-  reserved "then"
-  tbranch <- many1 statement
-  ebranch <- option [] $ (reserved "else" >>= \_ -> many1 statement)
-  reserved "endif"
+  Token.reserved lexer "then"
+  tbranch <- many1 $ statement lexer
+  ebranch <- option [] $
+    (Token.reserved lexer "else" >>= \_ -> many1 $ statement lexer)
+  Token.reserved lexer "endif"
   return $ ImpIf cond (seqList tbranch) (seqList ebranch)
 
-parseWhile :: ImpParser s (ImpWhile ImpProgram)
-parseWhile = do
-  reserved "while"
+parseWhile :: TokenParser s -> ImpParser s (ImpWhile ImpProgram)
+parseWhile lexer = do
+  Token.reserved lexer "while"
   cond  <- parseBExp
-  whiteSpace
-  reserved "do"
+  Token.whiteSpace lexer
+  Token.reserved lexer "do"
   inv <- option Nothing $ do
-    reserved "@inv"
-    invStr <- braces $ many $ noneOf "{}"
+    Token.reserved lexer "@inv"
+    invStr <- Token.braces lexer $ many $ noneOf "{}"
     case parseAssertion invStr of
       Left err  -> fail (show err)
       Right inv -> return $ Just inv
   var <- option Nothing $ do
-    reserved "@var"
-    varStr <- braces $ many $ noneOf "{}"
+    Token.reserved lexer "@var"
+    varStr <- Token.braces lexer $ many $ noneOf "{}"
     case parseArith varStr of
       Left err  -> fail (show err)
       Right var -> return $ Just var
-  whiteSpace
-  body  <- many1 $ try statement
-  whiteSpace
-  reserved "end"
+  Token.whiteSpace lexer
+  body  <- many1 $ try $ statement lexer
+  Token.whiteSpace lexer
+  Token.reserved lexer "end"
   return $ ImpWhile cond (seqList body) (inv, var)
 
-name :: ImpParser s Name
-name = identifier >>= (return . Name.fromString)
+name :: TokenParser s -> ImpParser s Name
+name lexer = Token.identifier lexer >>= (return . Name.fromString)
 
 progParser :: ImpProgram_ p =>
               ImpParser s p -> ImpParser s ImpProgram

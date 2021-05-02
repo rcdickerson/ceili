@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4dc889126f3e1aa07090413ec2bb370b9b5d56c45fd310d826ddff66a0e717bb
+-- hash: c1dc124657937a21db491df3ab735c33cc3441ba9d18b460ebfc2efe3592a685
 
 name:           ceili
 version:        0.1.0.0
@@ -91,6 +91,7 @@ test-suite ceili-test
   main-is: TestMain.hs
   other-modules:
       Ceili.AssertionTest
+      Ceili.Language.FunImpParserTest
       Ceili.Language.ImpParserTest
       Ceili.Language.ImpTest
       Ceili.NameTest

@@ -8,7 +8,7 @@ import Ceili.Language.AExpParser ( parseAExp )
 import Ceili.Language.FunImp
 import qualified Ceili.Language.Imp as Imp
 import qualified Ceili.Language.ImpParser as ImpParser
-import Ceili.Name ( Name(..), namesIn )
+import Ceili.Name ( namesIn )
 import qualified Ceili.Name as Name
 import qualified Data.Map as Map
 import Text.Parsec
@@ -18,18 +18,9 @@ type FunImpParser a = Parsec String FunImplEnv a
 type ProgramParser = FunImpParser FunImpProgram
 
 funImpLanguageDef :: Token.LanguageDef a
-funImpLanguageDef = Token.LanguageDef
-  { Token.caseSensitive   = True
-  , Token.commentStart    = "/*"
-  , Token.commentEnd      = "*/"
-  , Token.commentLine     = "//"
-  , Token.identStart      = letter <|> char '@'
-  , Token.identLetter     = alphaNum <|> char '_'
-  , Token.nestedComments  = True
-  , Token.opStart         = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , Token.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , Token.reservedNames   = ["fun", "return", "call"]
-  , Token.reservedOpNames = [":="]
+funImpLanguageDef = ImpParser.impLanguageDef {
+    Token.reservedNames = Token.reservedNames ImpParser.impLanguageDef
+                       ++ ["fun", "return", "call"]
   }
 
 lexer      = Token.makeTokenParser $ funImpLanguageDef
@@ -43,30 +34,20 @@ reservedOp = Token.reservedOp lexer
 semi       = Token.semi       lexer
 whiteSpace = Token.whiteSpace lexer
 
-parseFunImp :: String -> Either ParseError (FunImpProgram, FunImplEnv)
+parseFunImp :: String -> Either ParseError FunImplEnv
 parseFunImp str = runParser program Map.empty "" str
 
-program :: FunImpParser (FunImpProgram, FunImplEnv)
+program :: FunImpParser FunImplEnv
 program = do
-  stmts <- many1 $
-             whiteSpace >>
-             (many $ funDef >> whiteSpace) >>
-             statement
-  impls <- getState
-  return (seqList stmts, impls)
-
-seqList :: [FunImpProgram] -> FunImpProgram
-seqList stmts = case stmts of
-  []   -> fimpSkip
-  s:[] -> s
-  ss   -> fimpSeq ss
+  _ <- many1 $ whiteSpace >> funDef
+  getState
 
 statement :: ProgramParser
 statement = parens statement
-        <|> impToFunImp ImpParser.parseIf
-        <|> impToFunImp ImpParser.parseWhile
-        <|> impToFunImp ImpParser.parseSkip
-        <|> impToFunImp ImpParser.parseAsgn
+        <|> (impToFunImp $ ImpParser.parseIf lexer)
+        <|> (impToFunImp $ ImpParser.parseWhile lexer)
+        <|> (impToFunImp $ ImpParser.parseSkip lexer)
+        <|> (impToFunImp $ ImpParser.parseAsgn lexer)
         <|> funCall
 
 impToFunImp :: FunImpProgram_ p => FunImpParser p -> ProgramParser

@@ -3,11 +3,14 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Ceili.Language.FunImp
-  ( FunImpl(..)
+  ( AExp(..)
+  , BExp(..)
+  , FunImpl(..)
   , FunImpCall(..)
   , FunImplEnv
   , FunImpProgram
   , FunImpProgram_
+  , Name(..)
   , fimpAsgn
   , fimpCall
   , fimpIf
@@ -17,6 +20,8 @@ module Ceili.Language.FunImp
   , packFunImp
   ) where
 
+import Ceili.Language.AExp
+import Ceili.Language.BExp
 import qualified Ceili.Language.Imp as Imp
 import Ceili.Name ( CollectableNames(..)
                   , Handle
