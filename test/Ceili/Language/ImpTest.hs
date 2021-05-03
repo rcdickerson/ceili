@@ -18,8 +18,12 @@ prog1 = impSeq [ impAsgn x $ ALit 5
                        (impAsgn y $ ALit 0)
                        (impAsgn y $ ALit 1) ]
 
+assertion assertionStr = case parseAssertion assertionStr of
+  Left err        -> error $ "Bad assertion string: " ++ show err
+  Right assertion -> assertion
+
 test_forwardPT = do
-  let expectedE = parseAssertion $
+  let expected = assertion
         "(or \
         \ (exists ((y!1 int)) \
         \   (and (= y 0)      \
@@ -27,11 +31,22 @@ test_forwardPT = do
         \ (exists ((y!1 int)) \
         \   (and (= y 1)      \
         \        (and (exists ((x!1 int)) (and (= x 5) true)) (not (< x 0))))))"
-  actualE <- runCeili defaultEnv $ forwardPT ATrue prog1
-  case (expectedE, actualE) of
-    (Left err, _)  -> assertFailure $ show err
-    (_, Left err)  -> assertFailure $ show err
-    (Right expected, Right actual) -> assertEqual expected actual
+  actualEither <- runCeili defaultEnv $ forwardPT ATrue prog1
+  case actualEither of
+    Left err     -> assertFailure $ show err
+    Right actual -> assertEqual expected actual
+
+test_backwardPT = do
+  let post = Eq (Var iy) (Num 1)
+  let expected = assertion
+        "(and \
+        \  (=> (< 5 0) (= 0 1)) \
+        \  (=> (not (< 5 0)) (= 1 1)))"
+  actualEither <- runCeili defaultEnv $ backwardPT post prog1
+  case actualEither of
+    Left err     -> assertFailure $ show err
+    Right actual -> assertEqual expected actual
+
 
 test_mapNames = do
   let expected = impSeq [ impAsgn (Name "x!foo" 0) $ ALit 5
