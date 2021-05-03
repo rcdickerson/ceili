@@ -19,6 +19,7 @@ import qualified Data.ByteString.Char8 as S8
 import Data.Set  ( Set )
 import qualified Data.Set as Set
 
+
 ----------------------------
 -- Arithmetic Expressions --
 ----------------------------

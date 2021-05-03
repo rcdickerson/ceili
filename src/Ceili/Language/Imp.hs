@@ -201,11 +201,6 @@ instance ForwardPT (ImpWhile ImpProgram) where
       else Env.throwError
            $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
 
-namesInToInt :: CollectableNames c => c -> Set TypedName
-namesInToInt c = let
-   names = namesIn c
-   in Set.map (\n -> TypedName n Int) names
-
 
 ----------------------------------
 -- Backward Predicate Transform --
@@ -257,3 +252,9 @@ instance BackwardPT (ImpWhile ImpProgram) where
       let endWP  = A.Forall qNames
                    (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
       return $ A.And [inv, loopWP, endWP]
+
+
+namesInToInt :: CollectableNames c => c -> Set TypedName
+namesInToInt c = let
+   names = namesIn c
+   in Set.map (\n -> TypedName n Int) names
