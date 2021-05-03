@@ -16,6 +16,7 @@ module Ceili.Language.Imp
   , Invariant
   , Measure
   , Name(..)
+  , backwardPT
   , forwardPT
   , impAsgn
   , impIf
@@ -38,9 +39,11 @@ import Ceili.Name ( CollectableNames(..)
                   , Type(..) )
 import qualified Ceili.Name as Name
 import Ceili.PTS.ForwardPT ( ForwardPT(..) )
+import Ceili.PTS.BackwardPT ( BackwardPT(..) )
 import Ceili.SMTString ( showSMT )
 import Data.Set ( Set )
-import qualified Data.Set  as Set
+import qualified Data.Set as Set
+import qualified Data.Map as Map
 import Data.Typeable ( Typeable, cast )
 
 
@@ -51,6 +54,7 @@ class ( CollectableNames p
       , MappableNames p
       , Eq p, Show p
       , Typeable p
+      , BackwardPT p
       , ForwardPT p
       ) => ImpProgram_ p
 
@@ -92,7 +96,10 @@ impSeq = packImp . ImpSeq
 impIf :: BExp -> ImpProgram -> ImpProgram -> ImpProgram
 impIf bexp t e = packImp $ ImpIf bexp t e
 
-impWhile :: BExp -> ImpProgram -> (Maybe Invariant, Maybe Measure) -> ImpProgram
+impWhile :: BExp
+         -> ImpProgram
+         -> (Maybe Invariant, Maybe Measure)
+         -> ImpProgram
 impWhile bexp body iv = packImp $ ImpWhile bexp body iv
 
 deriving instance Eq ImpSkip
@@ -141,6 +148,7 @@ instance {-# OVERLAPPING #-} MappableNames p =>
 
 -- TODO: Instance overlap might make the Functor Collectable / Mappable
 -- convenience instances not worthwhile. Maybe just remove them?
+
 
 ---------------------------------
 -- Forward Predicate Transform --
@@ -197,3 +205,55 @@ namesInToInt :: CollectableNames c => c -> Set TypedName
 namesInToInt c = let
    names = namesIn c
    in Set.map (\n -> TypedName n Int) names
+
+
+----------------------------------
+-- Backward Predicate Transform --
+----------------------------------
+
+instance BackwardPT ImpProgram where
+  backwardPT post (ImpProgram p) = backwardPT post p
+
+instance BackwardPT ImpSkip where
+  backwardPT post ImpSkip = return post
+
+instance BackwardPT ImpAsgn where
+  backwardPT post (ImpAsgn lhs rhs) =
+    return $ A.subArith (TypedName lhs Name.Int)
+                        (aexpToArith rhs)
+                        post
+
+instance BackwardPT (ImpSeq ImpProgram) where
+  backwardPT post (ImpSeq stmts) = case stmts of
+    [] -> return post
+    (s:ss) -> do
+      post' <- backwardPT post (impSeq ss)
+      backwardPT post' s
+
+instance BackwardPT (ImpIf ImpProgram) where
+  backwardPT post (ImpIf condB tBranch eBranch) = do
+    wpT <- backwardPT post tBranch
+    wpE <- backwardPT post eBranch
+    let cond   = bexpToAssertion condB
+        ncond  = A.Not $ cond
+    return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
+
+instance BackwardPT (ImpWhile ImpProgram) where
+  backwardPT post (ImpWhile condB body (minv, _)) = let
+    cond          = bexpToAssertion condB
+    varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
+    vars          = Set.toList varSet
+    freshMapping  = fst $ Name.freshNames vars $ Name.buildNextFreshIds vars
+    (orig, fresh) = unzip $ Map.toList freshMapping
+    freshen       = Name.substituteAll orig fresh
+    qNames        = Set.toList $ namesInToInt fresh
+    inv           = case minv of
+                      Just i  -> i
+                      Nothing -> error "Invariant inference in Imp backward reasoning is currently unsupported"
+    in do
+      bodyWP <- backwardPT inv body
+      let loopWP = A.Forall qNames
+                   (freshen $ A.Imp (A.And [cond, inv]) bodyWP)
+      let endWP  = A.Forall qNames
+                   (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
+      return $ A.And [inv, loopWP, endWP]

@@ -24,10 +24,10 @@ assertVerifierResultMatches expected result =
     (ExpectFailure, SMT.Valid) -> assertFailure
       $ "Expected INVALID but was VALID"
 
-parseAndTest pre progStr post expected = case parseImp progStr of
+parseAndTest pre progStr post predTrans expected = case parseImp progStr of
   Left  err     -> assertFailure $ "Parse error: " ++ (show err)
   Right program -> do
-    spOrErr <- runCeili defaultEnv $ Imp.forwardPT pre program
+    spOrErr <- runCeili defaultEnv $ predTrans pre program
     case spOrErr of
       Left err     -> assertFailure $ show err
       Right sp -> do
@@ -43,12 +43,22 @@ readImpFile fileName = do
 varX = Var $ TypedName (Name "x" 0) Int
 varY = Var $ TypedName (Name "y" 0) Int
 
-test_inferInv1Valid = do
+test_forwardInferInv1Valid = do
   let post = Eq varX varY
   progStr <- readImpFile "inferInv1.imp"
-  parseAndTest ATrue progStr post ExpectSuccess
+  parseAndTest ATrue progStr post Imp.forwardPT ExpectSuccess
 
-test_inferInv1Invalid = do
+test_forwardInferInv1Invalid = do
   let post = Not $ Eq varX varY
   progStr <- readImpFile "inferInv1.imp"
-  parseAndTest ATrue progStr post ExpectFailure
+  parseAndTest ATrue progStr post Imp.forwardPT ExpectFailure
+
+test_backwardInferInv1Valid = do
+  let post = Eq varX varY
+  progStr <- readImpFile "inferInv1.imp"
+  parseAndTest ATrue progStr post Imp.backwardPT ExpectSuccess
+
+test_backwardInferInv1Invalid = do
+  let post = Not $ Eq varX varY
+  progStr <- readImpFile "inferInv1.imp"
+  parseAndTest ATrue progStr post Imp.backwardPT ExpectFailure
