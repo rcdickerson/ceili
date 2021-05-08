@@ -6,6 +6,8 @@ import Test.Framework
 import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.Language.Imp
+import Ceili.PTS.BackwardPT
+import Ceili.PTS.ForwardPT
 import Ceili.Name
 
 x = Name "x" 0
@@ -13,10 +15,11 @@ y = Name "y" 0
 ix = TypedName x Int
 iy = TypedName y Int
 
+prog1 :: ImpProgram
 prog1 = impSeq [ impAsgn x $ ALit 5
                , impIf (BLt (AVar x) (ALit 0))
-                       (impAsgn y $ ALit 0)
-                       (impAsgn y $ ALit 1) ]
+                   (impAsgn y $ ALit 0)
+                   (impAsgn y $ ALit 1) ]
 
 assertion assertionStr = case parseAssertion assertionStr of
   Left err        -> error $ "Bad assertion string: " ++ show err

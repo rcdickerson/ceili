@@ -8,6 +8,8 @@ import Ceili.CeiliEnv
 import qualified Ceili.Language.Imp as Imp
 import Ceili.Language.ImpParser
 import Ceili.Name
+import Ceili.PTS.BackwardPT ( backwardPT )
+import Ceili.PTS.ForwardPT ( forwardPT )
 import qualified Ceili.SMT as SMT
 import System.FilePath
 
@@ -46,19 +48,19 @@ varY = Var $ TypedName (Name "y" 0) Int
 test_forwardInferInv1Valid = do
   let post = Eq varX varY
   progStr <- readImpFile "inferInv1.imp"
-  parseAndTest ATrue progStr post Imp.forwardPT ExpectSuccess
+  parseAndTest ATrue progStr post forwardPT ExpectSuccess
 
 test_forwardInferInv1Invalid = do
   let post = Not $ Eq varX varY
   progStr <- readImpFile "inferInv1.imp"
-  parseAndTest ATrue progStr post Imp.forwardPT ExpectFailure
+  parseAndTest ATrue progStr post forwardPT ExpectFailure
 
 test_backwardInferInv1Valid = do
   let post = Eq varX varY
   progStr <- readImpFile "inferInv1.imp"
-  parseAndTest ATrue progStr post Imp.backwardPT ExpectSuccess
+  parseAndTest ATrue progStr post backwardPT ExpectSuccess
 
 test_backwardInferInv1Invalid = do
   let post = Not $ Eq varX varY
   progStr <- readImpFile "inferInv1.imp"
-  parseAndTest ATrue progStr post Imp.backwardPT ExpectFailure
+  parseAndTest ATrue progStr post backwardPT ExpectFailure

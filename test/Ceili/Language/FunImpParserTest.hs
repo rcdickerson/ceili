@@ -6,6 +6,7 @@ import Test.Framework
 
 import Ceili.Language.FunImp
 import Ceili.Language.FunImpParser
+import Ceili.Language.Imp
 import qualified Data.Map as Map
 
 -- Some dummy names / vars for convenience
@@ -21,10 +22,10 @@ assertCorrectParse progStr expected =
 test_funDef = let
   prog = "fun foo(x) { x := 0; return x; }"
   expected = Map.fromList
-    [("foo", FunImpl{ fimple_params = [x],
-                      fimpl_body = fimpSeq [
-                         fimpAsgn x (ALit 0),
-                         fimpAsgn (Name "foo!retVal" 0) (AVar x)],
+    [("foo", FunImpl{ fimpl_params = [x],
+                      fimpl_body = impSeq [
+                         impAsgn x (ALit 0),
+                         impAsgn (Name "foo!retVal" 0) (AVar x)],
                       fimpl_returns = [Name "foo!retVal" 0]})]
   in assertCorrectParse prog expected
 
@@ -32,24 +33,24 @@ test_twoFuns = let
   prog = "fun foo(x) { x := 0; return x; } \
         \ fun bar(y) { y := 5; return y; }"
   expected = Map.fromList
-    [("foo", FunImpl{ fimple_params = [x],
-                      fimpl_body = fimpSeq [
-                         fimpAsgn x (ALit 0),
-                         fimpAsgn (Name "foo!retVal" 0) (AVar x)],
+    [("foo", FunImpl{ fimpl_params = [x],
+                      fimpl_body = impSeq [
+                         impAsgn x (ALit 0),
+                         impAsgn (Name "foo!retVal" 0) (AVar x)],
                       fimpl_returns = [Name "foo!retVal" 0]}),
-     ("bar", FunImpl{ fimple_params = [y],
-                      fimpl_body = fimpSeq [
-                         fimpAsgn y (ALit 5),
-                         fimpAsgn (Name "bar!retVal" 0) (AVar y)],
+     ("bar", FunImpl{ fimpl_params = [y],
+                      fimpl_body = impSeq [
+                         impAsgn y (ALit 5),
+                         impAsgn (Name "bar!retVal" 0) (AVar y)],
                       fimpl_returns = [Name "bar!retVal" 0]})]
   in assertCorrectParse prog expected
 
 test_funCall = let
   prog = "fun foo(x) { x := call foo(x); return x; }"
   expected = Map.fromList
-    [("foo", FunImpl{ fimple_params = [x],
-                      fimpl_body = fimpSeq [
-                         fimpCall "foo" [AVar x] [x],
-                         fimpAsgn (Name "foo!retVal" 0) (AVar x)],
+    [("foo", FunImpl{ fimpl_params = [x],
+                      fimpl_body = impSeq [
+                         impCall "foo" [AVar x] [x],
+                         impAsgn (Name "foo!retVal" 0) (AVar x)],
                       fimpl_returns = [Name "foo!retVal" 0]})]
   in assertCorrectParse prog expected

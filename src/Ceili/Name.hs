@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Ceili.Name
   ( CollectableNames(..)
@@ -22,6 +23,7 @@ module Ceili.Name
   , substituteAllHandles
   ) where
 
+import Ceili.Language.Compose
 import Ceili.SMTString ( SMTString(..) )
 import qualified Data.ByteString.Char8 as S8
 import Data.List ( intercalate )
@@ -30,20 +32,6 @@ import Data.Map ( Map, (!) )
 import qualified Data.Map as Map
 import Data.Set ( Set )
 import qualified Data.Set as Set
-
-
-class CollectableNames a where
-  namesIn :: a -> Set Name
-
-class MappableNames a where
-  mapNames :: (Name -> Name) -> a -> a
-
-instance (Functor f, Foldable f, CollectableNames a) =>
-  CollectableNames (f a) where
-    namesIn as = Set.unions $ fmap namesIn as
-
-instance (Functor f, MappableNames a) => MappableNames (f a) where
-  mapNames f = fmap (mapNames f)
 
 
 -----------
@@ -136,6 +124,40 @@ freshen :: Traversable t => t Name -> NextFreshIds -> (t Name, NextFreshIds)
 freshen names nextFreshIds =
   (fmap (replacements!) names, nextIds')
   where (replacements, nextIds') = freshNames names nextFreshIds
+
+
+-------------------
+-- Collect Names --
+-------------------
+
+class CollectableNames a where
+  namesIn :: a -> Set Name
+
+instance CollectableNames a => CollectableNames [a] where
+  namesIn as = Set.unions $ map namesIn as
+
+instance (CollectableNames (f e), CollectableNames (g e)) => CollectableNames ((f :+: g) e) where
+ namesIn (Inl f) = namesIn f
+ namesIn (Inr g) = namesIn g
+
+
+---------------
+-- Map Names --
+---------------
+
+class MappableNames a where
+  mapNames :: (Name -> Name) -> a -> a
+
+instance MappableNames a => MappableNames (Maybe a) where
+  mapNames _ Nothing  = Nothing
+  mapNames f (Just a) = Just $ mapNames f a
+
+instance MappableNames a => MappableNames [a] where
+  mapNames f as = map (mapNames f) as
+
+instance (MappableNames (f e), MappableNames (g e)) => MappableNames ((f :+: g) e) where
+  mapNames func (Inl f) = Inl $ mapNames func f
+  mapNames func (Inr g) = Inr $ mapNames func g
 
 
 -----------------

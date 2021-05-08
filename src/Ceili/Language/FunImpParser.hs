@@ -23,7 +23,7 @@ funImpLanguageDef = ImpParser.impLanguageDef {
                        ++ ["fun", "return", "call"]
   }
 
-lexer      = Token.makeTokenParser $ funImpLanguageDef
+lexer      = Token.makeTokenParser funImpLanguageDef
 braces     = Token.braces     lexer
 comma      = Token.comma      lexer
 identifier = Token.identifier lexer
@@ -45,15 +45,10 @@ program = do
 statement :: ProgramParser
 statement = parens statement
         <|> try funCall
-        <|> (impToFunImp $ ImpParser.parseIf lexer)
-        <|> (impToFunImp $ ImpParser.parseWhile lexer)
-        <|> (impToFunImp $ ImpParser.parseSkip lexer)
-        <|> (impToFunImp $ ImpParser.parseAsgn lexer)
-
-impToFunImp :: FunImpProgram_ p => FunImpParser p -> ProgramParser
-impToFunImp impParser = do
-  result <- impParser
-  return $ packFunImp result
+        <|> ImpParser.parseIf lexer
+        <|> ImpParser.parseWhile lexer
+        <|> ImpParser.parseSkip lexer
+        <|> ImpParser.parseAsgn lexer
 
 funDef :: FunImpParser ()
 funDef = do
@@ -78,9 +73,9 @@ funBody cid = do
                                  in  (nextFresh:names, ids'))
                        ([], freshIds)
                        retExprs
-      asgns    = map (uncurry fimpAsgn) $ zip retNames retExprs
+      asgns    = map (uncurry Imp.impAsgn) $ zip retNames retExprs
       body     = bodyStmts ++ asgns
-  return (fimpSeq body, retNames)
+  return (Imp.impSeq body, retNames)
 
 funCall :: ProgramParser
 funCall = do
@@ -90,7 +85,7 @@ funCall = do
   funName <- identifier
   args    <- aexpTuple
   _ <- semi
-  return $ fimpCall funName args assignees
+  return $ impCall funName args assignees
 
 nameTuple :: FunImpParser [Name]
 nameTuple = do

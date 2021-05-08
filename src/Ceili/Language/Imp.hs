@@ -1,29 +1,31 @@
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Ceili.Language.Imp
   ( AExp(..)
   , BExp(..)
   , ImpAsgn(..)
+  , ImpExpr(..)
   , ImpIf(..)
-  , ImpProgram_
   , ImpProgram
   , ImpSeq(..)
   , ImpSkip(..)
   , ImpWhile(..)
   , Invariant
   , Measure
+  , MVarInvar
   , Name(..)
-  , backwardPT
-  , forwardPT
   , impAsgn
   , impIf
   , impSeq
+  , impSeqIfNeeded
   , impSkip
   , impWhile
-  , packImp
+  , inject
   ) where
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
@@ -32,6 +34,7 @@ import qualified Ceili.CeiliEnv as Env
 import qualified Ceili.InvariantInference.Houdini as Houdini
 import Ceili.Language.AExp ( AExp(..), aexpToArith )
 import Ceili.Language.BExp ( BExp(..), bexpToAssertion )
+import Ceili.Language.Compose
 import Ceili.Name ( CollectableNames(..)
                   , MappableNames(..)
                   , Name(..)
@@ -44,123 +47,105 @@ import Ceili.SMTString ( showSMT )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 import qualified Data.Map as Map
-import Data.Typeable ( Typeable, cast )
 
+
+data ImpExpr f = In (f (ImpExpr f))
+
+instance Eq (f (ImpExpr f)) => Eq (ImpExpr f) where
+  (In f1) == (In f2) = f1 == f2
+
+instance Show (f (ImpExpr f)) => Show (ImpExpr f) where
+  show (In f) = show f
+
+data ImpSkip e = ImpSkip
+  deriving (Eq, Ord, Show, Functor)
+
+data ImpAsgn e = ImpAsgn Name AExp
+  deriving (Eq, Ord, Show, Functor)
+
+data ImpSeq e = ImpSeq [e]
+  deriving (Eq, Ord, Show, Functor)
+
+data ImpIf e = ImpIf BExp e e
+  deriving (Eq, Ord, Show, Functor)
+
+data ImpWhile e = ImpWhile BExp e MVarInvar
+  deriving (Eq, Ord, Show, Functor)
 
 type Invariant = Assertion
 type Measure   = A.Arith
+type MVarInvar = (Maybe Invariant, Maybe Measure)
 
-class ( CollectableNames p
-      , MappableNames p
-      , Eq p, Show p
-      , Typeable p
-      , BackwardPT p
-      , ForwardPT p
-      ) => ImpProgram_ p
+type ImpProgram = ImpExpr ( ImpSkip
+                        :+: ImpAsgn
+                        :+: ImpSeq
+                        :+: ImpIf
+                        :+: ImpWhile )
 
-data ImpProgram = forall p. ImpProgram_ p => ImpProgram p
+inject :: (g :<: f) => g (ImpExpr f) -> ImpExpr f
+inject = In . inj
 
-instance Eq ImpProgram where
-  (ImpProgram p1) == (ImpProgram p2) = Just p1 == cast p2
-instance Show ImpProgram where
-  show (ImpProgram p) = show p
+impSkip :: (ImpSkip :<: f) => ImpExpr f
+impSkip = inject ImpSkip
 
-packImp :: ImpProgram_ p => p -> ImpProgram
-packImp = ImpProgram
+impAsgn :: (ImpAsgn :<: f) => Name -> AExp -> ImpExpr f
+impAsgn lhs rhs = inject $ ImpAsgn lhs rhs
 
-data ImpSkip    = ImpSkip
-data ImpAsgn    = ImpAsgn Name AExp
-data ImpSeq p   = ImpSeq [p]
-data ImpIf p    = ImpIf BExp p p
-data ImpWhile p = ImpWhile BExp p (Maybe Invariant, Maybe Measure)
+impSeq :: (ImpSeq :<: f) => [ImpExpr f] -> ImpExpr f
+impSeq stmts = inject $ ImpSeq stmts
 
-instance ImpProgram_ ImpSkip
-instance ImpProgram_ ImpAsgn
-instance ImpProgram_ (ImpSeq ImpProgram)
-instance ImpProgram_ (ImpIf ImpProgram)
-instance ImpProgram_ (ImpWhile ImpProgram)
+impSeqIfNeeded :: (ImpSkip :<: f, ImpSeq :<: f) => [ImpExpr f] -> ImpExpr f
+impSeqIfNeeded stmts = case stmts of
+  []   -> impSkip
+  s:[] -> s
+  ss   -> impSeq ss
 
-instance Functor ImpSeq where
-  fmap f (ImpSeq stmts) = ImpSeq $ map f stmts
-deriving instance Foldable ImpSeq
+impIf :: (ImpIf :<: f) => BExp -> ImpExpr f -> ImpExpr f -> ImpExpr f
+impIf cond tBranch eBranch = inject $ ImpIf cond tBranch eBranch
 
-impSkip :: ImpProgram
-impSkip = packImp ImpSkip
+impWhile :: (ImpWhile :<: f) => BExp -> ImpExpr f -> MVarInvar -> ImpExpr f
+impWhile cond body mVarInvar = inject $ ImpWhile cond body mVarInvar
 
-impAsgn :: Name -> AExp -> ImpProgram
-impAsgn name aexp = packImp $ ImpAsgn name aexp
 
-impSeq :: [ImpProgram] -> ImpProgram
-impSeq = packImp . ImpSeq
-
-impIf :: BExp -> ImpProgram -> ImpProgram -> ImpProgram
-impIf bexp t e = packImp $ ImpIf bexp t e
-
-impWhile :: BExp
-         -> ImpProgram
-         -> (Maybe Invariant, Maybe Measure)
-         -> ImpProgram
-impWhile bexp body iv = packImp $ ImpWhile bexp body iv
-
-deriving instance Eq ImpSkip
-deriving instance Eq ImpAsgn
-deriving instance Eq p => Eq (ImpSeq p)
-deriving instance Eq p => Eq (ImpIf p)
-deriving instance Eq p => Eq (ImpWhile p)
-
-deriving instance Show ImpSkip
-deriving instance Show ImpAsgn
-deriving instance Show p => Show (ImpSeq p)
-deriving instance Show p => Show (ImpIf p)
-deriving instance Show p => Show (ImpWhile p)
-
-instance CollectableNames ImpProgram where
-  namesIn (ImpProgram p) = namesIn p
-instance CollectableNames ImpSkip where
+instance CollectableNames (ImpSkip e) where
   namesIn ImpSkip = Set.empty
-instance CollectableNames ImpAsgn where
+instance CollectableNames (ImpAsgn e) where
   namesIn (ImpAsgn var aexp) = Set.insert var $ namesIn aexp
-instance {-# OVERLAPPING #-} CollectableNames p =>
-  CollectableNames (ImpIf p) where
-    namesIn (ImpIf cond bThen bElse) = Set.unions
-      [ (namesIn cond), (namesIn bThen), (namesIn bElse)]
-instance {-# OVERLAPPING #-} CollectableNames p =>
-  CollectableNames (ImpWhile p) where
-    namesIn (ImpWhile cond body _) = Set.union (namesIn cond) (namesIn body)
--- Note: Seq is a Foldable Functor, so gets this instance automatically.
+instance CollectableNames e => CollectableNames (ImpSeq e) where
+  namesIn (ImpSeq stmts) = namesIn stmts
+instance CollectableNames e => CollectableNames (ImpIf e) where
+  namesIn (ImpIf cond bThen bElse) = Set.unions
+    [ (namesIn cond), (namesIn bThen), (namesIn bElse)]
+instance CollectableNames e => CollectableNames (ImpWhile e) where
+  namesIn (ImpWhile cond body _) = Set.union (namesIn cond) (namesIn body)
+instance CollectableNames ImpProgram
+  where namesIn (In p) = namesIn p
 
-instance MappableNames ImpProgram where
-  mapNames f (ImpProgram p) = ImpProgram $ mapNames f p
-instance MappableNames ImpSkip where
+instance MappableNames (ImpSkip e) where
   mapNames _ ImpSkip = ImpSkip
-instance MappableNames ImpAsgn where
+instance MappableNames (ImpAsgn e) where
   mapNames f (ImpAsgn var aexp) = ImpAsgn (f var) (mapNames f aexp)
-instance {-# OVERLAPPING #-} MappableNames p =>
-  MappableNames (ImpIf p) where
-    mapNames f (ImpIf c t e) = ImpIf (mapNames f c) (mapNames f t) (mapNames f e)
-instance {-# OVERLAPPING #-} MappableNames p =>
-  MappableNames (ImpWhile p) where
+instance MappableNames e => MappableNames (ImpSeq e) where
+  mapNames f (ImpSeq stmts) = ImpSeq $ mapNames f stmts
+instance MappableNames e => MappableNames (ImpIf e) where
+  mapNames f (ImpIf c t e) = ImpIf (mapNames f c) (mapNames f t) (mapNames f e)
+instance MappableNames e => MappableNames (ImpWhile  e) where
     mapNames f (ImpWhile cond body (invar, meas)) =
       ImpWhile (mapNames f cond)
-               (mapNames f body)
-               (mapNames f invar, mapNames f meas)
--- Note: Seq is a Functor, so gets this instance automatically.
-
--- TODO: Instance overlap might make the Functor Collectable / Mappable
--- convenience instances not worthwhile. Maybe just remove them?
+                (mapNames f body)
+                (mapNames f invar, mapNames f meas)
+instance MappableNames ImpProgram
+  where mapNames f (In p) = In $ mapNames f p
 
 
----------------------------------
--- Forward Predicate Transform --
----------------------------------
+-------------------------------------------
+-- Forward Predicate Transform (Partial) --
+-------------------------------------------
 
-instance ForwardPT ImpProgram where
-  forwardPT pre (ImpProgram p) = forwardPT pre p
-
-instance ForwardPT ImpSkip where
+instance ForwardPT (ImpSkip e) where
   forwardPT pre ImpSkip = return pre
 
-instance ForwardPT ImpAsgn where
+instance ForwardPT (ImpAsgn e) where
   forwardPT pre (ImpAsgn lhs rhs) = let
     names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
     (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
@@ -171,21 +156,21 @@ instance ForwardPT ImpAsgn where
     subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
     in return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
 
-instance ForwardPT (ImpSeq ImpProgram) where
+instance ForwardPT e => ForwardPT (ImpSeq e) where
   forwardPT pre (ImpSeq stmts) = case stmts of
     []     -> return pre
     (s:ss) -> do
       pre' <- forwardPT pre s
       forwardPT pre' (ImpSeq ss)
 
-instance ForwardPT (ImpIf ImpProgram) where
+instance ForwardPT e => ForwardPT (ImpIf e) where
   forwardPT pre (ImpIf b s1 s2) = do
     let cond = bexpToAssertion b
     postS1 <- forwardPT (A.And [pre, cond]) s1
     postS2 <- forwardPT (A.And [pre, A.Not cond]) s2
     return $ A.Or [postS1, postS2]
 
-instance ForwardPT (ImpWhile ImpProgram) where
+instance (CollectableNames e, ForwardPT e) => ForwardPT (ImpWhile e) where
   forwardPT pre (ImpWhile b body (minv, _)) = do
     let cond = bexpToAssertion b
     let bodySP pre' = forwardPT pre' body
@@ -201,31 +186,31 @@ instance ForwardPT (ImpWhile ImpProgram) where
       else Env.throwError
            $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
 
+instance ForwardPT ImpProgram where
+  forwardPT pre (In f) = forwardPT pre f
 
-----------------------------------
--- Backward Predicate Transform --
-----------------------------------
 
-instance BackwardPT ImpProgram where
-  backwardPT post (ImpProgram p) = backwardPT post p
+--------------------------------------------
+-- Backward Predicate Transform (Partial) --
+--------------------------------------------
 
-instance BackwardPT ImpSkip where
+instance BackwardPT (ImpSkip e) where
   backwardPT post ImpSkip = return post
 
-instance BackwardPT ImpAsgn where
+instance BackwardPT (ImpAsgn e) where
   backwardPT post (ImpAsgn lhs rhs) =
     return $ A.subArith (TypedName lhs Name.Int)
                         (aexpToArith rhs)
                         post
 
-instance BackwardPT (ImpSeq ImpProgram) where
+instance BackwardPT e => BackwardPT (ImpSeq e) where
   backwardPT post (ImpSeq stmts) = case stmts of
     [] -> return post
     (s:ss) -> do
-      post' <- backwardPT post (impSeq ss)
+      post' <- backwardPT post (ImpSeq ss)
       backwardPT post' s
 
-instance BackwardPT (ImpIf ImpProgram) where
+instance BackwardPT e => BackwardPT (ImpIf e) where
   backwardPT post (ImpIf condB tBranch eBranch) = do
     wpT <- backwardPT post tBranch
     wpE <- backwardPT post eBranch
@@ -233,7 +218,7 @@ instance BackwardPT (ImpIf ImpProgram) where
         ncond  = A.Not $ cond
     return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
 
-instance BackwardPT (ImpWhile ImpProgram) where
+instance (CollectableNames e, BackwardPT e) => BackwardPT (ImpWhile e) where
   backwardPT post (ImpWhile condB body (minv, _)) = let
     cond          = bexpToAssertion condB
     varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
@@ -244,7 +229,7 @@ instance BackwardPT (ImpWhile ImpProgram) where
     qNames        = Set.toList $ namesInToInt fresh
     inv           = case minv of
                       Just i  -> i
-                      Nothing -> error "Invariant inference in Imp backward reasoning is currently unsupported"
+                      Nothing -> error "Backward invariant inference unsupported"
     in do
       bodyWP <- backwardPT inv body
       let loopWP = A.Forall qNames
@@ -253,6 +238,13 @@ instance BackwardPT (ImpWhile ImpProgram) where
                    (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
       return $ A.And [inv, loopWP, endWP]
 
+instance BackwardPT ImpProgram where
+  backwardPT post (In f) = backwardPT post f
+
+
+-------------
+-- Utility --
+-------------
 
 namesInToInt :: CollectableNames c => c -> Set TypedName
 namesInToInt c = let
