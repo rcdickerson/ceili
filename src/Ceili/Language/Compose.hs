@@ -11,10 +11,19 @@ module Ceili.Language.Compose
     (:<:)(..)
   ) where
 
+infixr 6 :+:
+
 data (f :+: g) e = Inl (f e) | Inr (g e)
   deriving Functor
 
-infixr 6 :+:
+instance (Eq (f e), Eq (g e)) => Eq ((f :+: g) e) where
+  (Inl f1) == (Inl f2)   =   f1 == f2
+  (Inr g1) == (Inr g2)   =   g1 == g2
+  _ == _                 =   False
+
+instance (Show (f e), Show (g e)) => Show ((f :+: g) e) where
+  show (Inl f) = show f
+  show (Inr g) = show g
 
 class (Functor sub, Functor sup) => sub :<: sup where
   inj :: sub a -> sup a
@@ -27,13 +36,3 @@ instance {-# OVERLAPPING #-} (Functor f, Functor g) => f :<: (f :+: g) where
 
 instance (Functor f, Functor g, Functor h, f :<: g) => f :<: (h :+: g) where
   inj = Inr . inj
-
-
-instance (Eq (f e), Eq (g e)) => Eq ((f :+: g) e) where
-  (Inl f1) == (Inl f2)   =   f1 == f2
-  (Inr g1) == (Inr g2)   =   g1 == g2
-  _ == _                 =   False
-
-instance (Show (f e), Show (g e)) => Show ((f :+: g) e) where
-  show (Inl f) = show f
-  show (Inr g) = show g
