@@ -1,3 +1,9 @@
+-- Loop invariance inspired by Houdini.
+-- "Houdini, an annotation assistant for ESC/Java."
+-- Flanagan, Cormac, and K. Rustan M. Leino
+-- International Symposium of Formal Methods Europe.
+-- Springer, Berlin, Heidelberg, 2001.
+
 module Ceili.InvariantInference.Houdini
   ( infer
   ) where

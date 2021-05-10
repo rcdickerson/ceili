@@ -1,3 +1,9 @@
+-- An implementation of PIE / LoopInvGen invariant inference from
+-- "Data-driven precondition inference with learned features"
+-- Padhi, Saswat, Rahul Sharma, and Todd Millstein
+-- ACM SIGPLAN Notices 51.6 (2016): 42-56.
+-- http://web.cs.ucla.edu/~todd/research/pldi16.pdf
+
 module Ceili.InvariantInference.Pie
   (
   ) where
@@ -38,7 +44,6 @@ pie features goodTests badTests = do
     Nothing -> do
       classifier <- boolLearn posFV negFV
       return $ substituteFV features classifier
-
 
 createFV :: Vector Assertion -> Vector Test -> Ceili FeatureVector
 createFV features tests = Vector.generateM (Vector.length tests) testVec
