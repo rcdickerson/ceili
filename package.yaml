@@ -30,6 +30,7 @@ dependencies:
 - split
 - transformers
 - unbounded-delays
+- vector
 
 library:
   source-dirs: src

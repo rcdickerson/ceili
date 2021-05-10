@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1645e97049ae161b75d3266e0125e34d9b0fec6c4ef9a2dd63698f5bedfd7f73
+-- hash: 0986c491a6f175e265822ff1b9e03ccf3ed566b678f72baf3279a2af06296300
 
 name:           ceili
 version:        0.1.0.0
@@ -33,6 +33,7 @@ library
       Ceili.CeiliEnv
       Ceili.InvariantInference.Houdini
       Ceili.InvariantInference.LinearInequalities
+      Ceili.InvariantInference.Pie
       Ceili.Language.AExp
       Ceili.Language.AExpParser
       Ceili.Language.BExp
@@ -63,6 +64,7 @@ library
     , split
     , transformers
     , unbounded-delays
+    , vector
   default-language: Haskell2010
 
 executable ceili-verification-test
@@ -86,6 +88,7 @@ executable ceili-verification-test
     , split
     , transformers
     , unbounded-delays
+    , vector
   default-language: Haskell2010
 
 test-suite ceili-test
@@ -115,4 +118,5 @@ test-suite ceili-test
     , split
     , transformers
     , unbounded-delays
+    , vector
   default-language: Haskell2010

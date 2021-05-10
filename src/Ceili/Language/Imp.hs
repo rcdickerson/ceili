@@ -19,6 +19,8 @@ module Ceili.Language.Imp
   , Measure
   , MVarInvar
   , Name(..)
+  , backwardPT
+  , forwardPT
   , impAsgn
   , impIf
   , impSeq
