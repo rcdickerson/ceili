@@ -24,13 +24,13 @@ infer :: Set TypedName
       -> (Assertion -> Ceili Assertion)
       -> Ceili Assertion
 infer names lits size precond computeSP = do
-  log_i "Beginning invariant inference with Houdini"
+  log_i "[Houdini] Beginning invariant inference with Houdini"
   log_d $ (show $ Set.size names) ++ " names, "
        ++ (show $ Set.size lits) ++ " lits"
   candidates <- findCandidates names lits size precond
-  log_d $ "Filtered candidates: " ++ (show $ length candidates)
+  log_d $ "[Houdini] Filtered candidates: " ++ (show $ length candidates)
   inductiveClauses <- houdini candidates computeSP
-  log_i $ "Invariant: " ++ (showSMT $ And inductiveClauses)
+  log_i $ "[Houdini] Invariant: " ++ (showSMT $ And inductiveClauses)
   return $ And inductiveClauses
 
 findCandidates :: Set TypedName
@@ -40,14 +40,14 @@ findCandidates :: Set TypedName
                -> Ceili [Assertion]
 findCandidates names lits size precond = do
   let candidates = linearInequalities names lits size
-  log_d $ "Initial candidate size: " ++ (show $ Set.size candidates)
+  log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)
   filterM (checkValid . Imp precond) $ Set.toList candidates
 
 houdini :: [Assertion]
         -> (Assertion -> Ceili Assertion)
         -> Ceili [Assertion]
 houdini candidates computeSP = do
-  log_i $ "Starting houdini pass with "
+  log_i $ "[Houdini] Starting pass with "
     ++ (show $ length candidates)
     ++ " candidate clauses."
   sp <- computeSP $ And candidates

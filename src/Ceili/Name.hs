@@ -137,8 +137,8 @@ instance CollectableNames a => CollectableNames [a] where
   namesIn as = Set.unions $ map namesIn as
 
 instance (CollectableNames (f e), CollectableNames (g e)) => CollectableNames ((f :+: g) e) where
- namesIn (Inl f) = namesIn f
- namesIn (Inr g) = namesIn g
+  namesIn (Inl f) = namesIn f
+  namesIn (Inr g) = namesIn g
 
 
 ---------------
