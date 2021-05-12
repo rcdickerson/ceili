@@ -5,12 +5,13 @@
 -- http://web.cs.ucla.edu/~todd/research/pldi16.pdf
 
 module Ceili.InvariantInference.Pie
-  (
+  ( loopInvGen
   ) where
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.LinearInequalities
+import Ceili.Language.BExp
 import Ceili.Language.Imp
 import Ceili.Name
 import Data.Maybe ( isJust )
@@ -22,33 +23,91 @@ import qualified Data.Vector as Vector
 type FeatureVector = Vector (Vector Bool)
 type Test = Assertion -- TODO: Allow other kinds of tests.
 
-preGen :: ImpProgram -> Assertion -> [Assertion] -> Ceili (Maybe Assertion)
-preGen program post tests = do
-  (goodTests, badTests) <- partitionTests program post tests
-  pie Vector.empty goodTests badTests
+loopInvGen :: BExp
+           -> ImpProgram
+           -> Assertion
+           -> [Test]
+           -> Ceili (Maybe Assertion)
+loopInvGen cond body post goodTests = do
+  let condA = bexpToAssertion cond
+  mInvar <- vPreGen (Not condA)
+                    impSkip
+                    post
+                    (Vector.fromList goodTests)
+                    Vector.empty
+  case mInvar of
+    Nothing -> return Nothing
+    Just invar -> do
+      let makeInductive invar = do
+            sp <- forwardPT (And [invar, condA]) body
+            inductive <- checkValid $ Imp sp invar
+            case inductive of
+              True -> return $ Just invar
+              False -> do
+                mInvar' <- vPreGen (And [invar, condA])
+                                  body
+                                  invar
+                                  (Vector.fromList goodTests)
+                                  Vector.empty
+                case mInvar' of
+                  Nothing -> return Nothing
+                  Just invar' -> makeInductive $ And [invar, invar']
+      mInvar' <- makeInductive invar
+      case mInvar' of
+        Nothing -> return Nothing
+        Just invar' -> do
+          mCounter <- findCounterexample $ invar'
+          case mCounter of
+            Nothing -> return $ Just invar'
+            Just counter -> loopInvGen cond body post (counter:goodTests)
 
-partitionTests :: ImpProgram -> Assertion -> [Test] -> Ceili (Vector Test, Vector Test)
-partitionTests program post tests = do
-  let tagValid test = do
-        sp <- forwardPT test program      -- TODO: This could get bogged down in more invar inference.
-        valid <- checkValid $ Imp sp post --       Replace with actual evaluation semantics?
-        return (test, valid)
-  tagged <- Vector.mapM tagValid $ Vector.fromList tests
-  let (good, bad) = Vector.unstablePartition snd tagged
-  return (Vector.map fst good, Vector.map fst bad)
+vPreGen :: Assertion
+        -> ImpProgram
+        -> Assertion
+        -> Vector Test
+        -> Vector Test
+        -> Ceili (Maybe Assertion)
+vPreGen pre program post goodTests badTests = do
+  let names = namesInToInt program
+  let lits = Set.empty -- TODO: Lits
+  mCandidate <- pie names lits Vector.empty goodTests badTests
+  case mCandidate of
+    Nothing -> return Nothing
+    Just candidate -> do
+      sp <- forwardPT (And [candidate, pre]) program
+      mCounter <- findCounterexample $ Imp sp post
+      case mCounter of
+        Nothing -> return $ Just candidate
+        Just counter -> vPreGen pre program post goodTests $
+          Vector.cons counter badTests
 
-pie :: Vector Assertion -> Vector Test -> Vector Test -> Ceili (Maybe Assertion)
-pie features goodTests badTests = do
+-- partitionTests :: ImpProgram -> Assertion -> [Test] -> Ceili (Vector Test, Vector Test)
+-- partitionTests program post tests = do
+--   let tagValid test = do
+--         sp <- forwardPT test program      -- TODO: This could get bogged down in more invar inference.
+--         valid <- checkValid $ Imp sp post --       Replace with actual evaluation semantics?
+--         return (test, valid)
+--   tagged <- Vector.mapM tagValid $ Vector.fromList tests
+--   let (good, bad) = Vector.unstablePartition snd tagged
+--   return (Vector.map fst good, Vector.map fst bad)
+
+pie :: Set TypedName
+    -> Set Int
+    -> Vector Assertion
+    -> Vector Test
+    -> Vector Test
+    -> Ceili (Maybe Assertion)
+pie names lits features goodTests badTests = do
   posFV <- createFV features goodTests
   negFV <- createFV features badTests
   case (getConflict posFV negFV goodTests badTests) of
     Just (xGood, xBad) -> do
       let maxDepth = 3 -- TODO: Don't hardcode max depth
-      mNewFeature <- featureLearn maxDepth xGood xBad
+      mNewFeature <- featureLearn names lits maxDepth xGood xBad
       case mNewFeature of
         Just newFeature -> do
           log_d $ "[PIE] Learned new feature: " ++ show newFeature
-          pie (Vector.cons newFeature features) goodTests badTests
+          pie names lits (Vector.cons newFeature features) goodTests badTests
         Nothing -> do
           log_e $ "[PIE] Unable to find separating feature (at max depth " ++ show maxDepth ++ ")"
           return Nothing
@@ -76,18 +135,25 @@ getConflict posFV negFV goodTests badTests = do
 findConflict :: FeatureVector -> FeatureVector -> Maybe (Vector Bool)
 findConflict posFV negFV = Vector.find (\pos -> isJust $ Vector.find (== pos) negFV) posFV
 
-boolLearn :: FeatureVector -> FeatureVector -> Ceili Assertion
-boolLearn = error "unimplemented"
+boolLearn :: Set TypedName
+          -> Set Int
+          -> FeatureVector
+          -> FeatureVector
+          -> Ceili Assertion
+boolLearn names lits posFV negFV = do
+
+  error "unimplemented"
 
 substituteFV :: Vector Assertion -> Assertion -> Assertion
 substituteFV = error "unimplemented"
 
-featureLearn :: Int -> Vector Test -> Vector Test -> Ceili (Maybe Assertion)
-featureLearn maxFeatureSize goodTests badTests = let
-  -- TODO: really need names / lits from the whole program?
-  names = Set.union (namesInToInt $ Vector.toList goodTests)
-                    (namesInToInt $ Vector.toList badTests)
-  lits = Set.empty
+featureLearn :: Set TypedName
+             -> Set Int
+             -> Int
+             -> Vector Test
+             -> Vector Test
+             -> Ceili (Maybe Assertion)
+featureLearn names lits maxFeatureSize goodTests badTests = let
   acceptsGoods assertion = And $ Vector.toList $
       Vector.map (\test -> Imp test assertion) goodTests
   rejectsBads assertion = And $ Vector.toList $

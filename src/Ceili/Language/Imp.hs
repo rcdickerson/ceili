@@ -177,7 +177,7 @@ instance (CollectableNames e, ForwardPT e) => ForwardPT (ImpWhile e) where
     let cond = bexpToAssertion b
     let bodySP pre' = forwardPT pre' body
     inv <- case minv of
-      Nothing  -> Houdini.infer (namesInToInt body) Set.empty 2 pre bodySP
+      Nothing  -> Houdini.infer (namesInToInt body) Set.empty 2 pre bodySP -- TODO: Lits
       Just inv -> return inv
     bodyInvSP <- bodySP inv
     Env.log_d "Checking loop invariant verification conditions..."

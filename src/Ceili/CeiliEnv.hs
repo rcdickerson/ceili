@@ -5,6 +5,7 @@ module Ceili.CeiliEnv
   , checkValid
   , checkValidWithLog
   , defaultEnv
+  , findCounterexample
   , log_d
   , log_e
   , log_i
@@ -82,3 +83,6 @@ checkValidWithLog level assertion = do
     Just SMT.Valid         -> return True
     Just (SMT.Invalid msg) -> do log_d msg; return False
     Just SMT.ValidUnknown  -> do log_e "SMT unknown"; return False
+
+findCounterexample :: Assertion -> Ceili (Maybe Assertion)
+findCounterexample = error "unimplemented"

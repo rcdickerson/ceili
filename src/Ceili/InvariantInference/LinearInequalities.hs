@@ -29,10 +29,8 @@ linearInequalities names lits size = let
   bounds      = Set.union arithLits varNames
   ineqPairs   = Set.filter (uncurry namesDisjoint) $
                 Set.filter (uncurry atLeastOneVar) $
-                Set.cartesianProduct bounds combos
-  in Set.unions [ Set.map (uncurry Lte) ineqPairs
-                , Set.map (uncurry Gte) ineqPairs
-                ]
+                Set.cartesianProduct combos bounds
+  in Set.map (uncurry Lte) ineqPairs
 
 constructLC :: [Arith] -> [Arith] -> Maybe Arith
 constructLC coeffs vars = let
