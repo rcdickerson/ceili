@@ -5,7 +5,10 @@
 -- http://web.cs.ucla.edu/~todd/research/pldi16.pdf
 
 module Ceili.InvariantInference.Pie
-  ( loopInvGen
+  ( Clause
+  , ClauseOccur(..)
+  , clausesWithSize
+  , loopInvGen
   ) where
 
 import Ceili.Assertion
@@ -18,12 +21,41 @@ import Ceili.Name
 import Data.Maybe ( isJust )
 import Data.Set ( Set )
 import qualified Data.Set as Set
+import Data.Map ( Map )
+import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
 
+--------------
+-- Features --
+--------------
 type Feature = Assertion
+
+
+---------------------
+-- Feature Vectors --
+---------------------
 type FeatureVector = Vector (Vector Bool)
+
+substituteFV :: Vector Assertion -> Assertion -> Assertion
+substituteFV = error "unimplemented"
+
+createFV :: Vector Feature -> Vector Test -> Ceili FeatureVector
+createFV features tests = Vector.generateM (Vector.length tests) testVec
+  where
+    testVec n = Vector.generateM (Vector.length features) $ checkFeature (tests!n)
+    checkFeature test n = checkValid $ Imp test (features!n)
+
+
+-----------
+-- Tests --
+-----------
 type Test = Assertion -- TODO: Allow other kinds of tests.
+
+
+----------------
+-- LoopInvGen --
+----------------
 
 loopInvGen :: BExp
            -> ImpProgram
@@ -93,6 +125,11 @@ vPreGen pre program post goodTests badTests = do
 --   let (good, bad) = Vector.unstablePartition snd tagged
 --   return (Vector.map fst good, Vector.map fst bad)
 
+
+---------
+-- PIE --
+---------
+
 pie :: Set TypedName
     -> Set Integer
     -> Vector Feature
@@ -117,12 +154,6 @@ pie names lits features goodTests badTests = do
       classifier <- boolLearn features posFV negFV
       return $ Just $ substituteFV features classifier
 
-createFV :: Vector Feature -> Vector Test -> Ceili FeatureVector
-createFV features tests = Vector.generateM (Vector.length tests) testVec
-  where
-    testVec n = Vector.generateM (Vector.length features) $ checkFeature (tests!n)
-    checkFeature test n = checkValid $ Imp test (features!n)
-
 getConflict :: FeatureVector
             -> FeatureVector
             -> Vector Test
@@ -140,12 +171,13 @@ findConflict posFV negFV = Vector.find (\pos -> isJust $ Vector.find (== pos) ne
 boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> Ceili Assertion
 boolLearn features posFV negFV = do
   log_i "[PIE] Learning boolean formula"
-  boolLearn' features posFV negFV 1 Vector.empty
+  let atoms = (Vector.++) features $ Vector.map Not features
+  boolLearn' atoms posFV negFV 1 Vector.empty
 
 boolLearn' :: Vector Feature -> FeatureVector -> FeatureVector -> Int -> Vector Assertion -> Ceili Assertion
 boolLearn' features posFV negFV k prevClauses = do
   log_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
-  let nextClauses = clausesWithSize k features
+  let nextClauses = clausesWithSize k $ Vector.length features
   consistentNext <- filterInconsistentClauses nextClauses posFV
   let clauses     = prevClauses Vector.++ consistentNext
   mSolution      <- greedySetCover clauses negFV
@@ -153,14 +185,33 @@ boolLearn' features posFV negFV k prevClauses = do
     Just solution -> return solution
     Nothing -> boolLearn' features posFV negFV (k + 1) clauses
 
-clausesWithSize :: Int -> Vector Feature -> Vector Assertion
-clausesWithSize size features =
-  if (size < 1) then error ("Clause size must be at least 1, was: " ++ show size)
-  else let
-    subsets = Collection.subsetsOfSize size $ Collection.vecToSet features
-    in error "unimplemented"
 
-filterInconsistentClauses :: Vector Assertion -> FeatureVector -> Ceili (Vector Assertion)
+-------------
+-- Clauses --
+-------------
+
+data ClauseOccur = CPos | CNeg
+  deriving (Show, Ord, Eq)
+type Clause = Map Int ClauseOccur
+
+clausesWithSize :: Int -> Int -> Vector Clause
+clausesWithSize size numFeatures =
+  if numFeatures < 1 then Vector.empty
+  else if size > numFeatures then Vector.empty
+  else case size of
+    0 -> Vector.empty
+    1 -> let
+      pos = Vector.fromList $ map (\i -> Map.singleton i CPos) [0..numFeatures - 1]
+      neg = Vector.fromList $ map (\i -> Map.singleton i CNeg) [0..numFeatures - 1]
+      in pos Vector.++ neg
+    _ -> let
+      prev    = clausesWithSize (size - 1) (numFeatures - 1)
+      pos     = Vector.map (\clause -> Map.insert (numFeatures - 1) CPos clause) prev
+      neg     = Vector.map (\clause -> Map.insert (numFeatures - 1) CNeg clause) prev
+      smaller = clausesWithSize size $ numFeatures - 1
+      in pos Vector.++ neg Vector.++ smaller
+
+filterInconsistentClauses :: Vector Clause -> FeatureVector -> Ceili (Vector Assertion)
 filterInconsistentClauses clauses fv = do
   error "unimplemented"
 
@@ -168,8 +219,10 @@ greedySetCover :: Vector Assertion -> FeatureVector -> Ceili (Maybe Assertion)
 greedySetCover features fv = do
   error "unimplemented"
 
-substituteFV :: Vector Assertion -> Assertion -> Assertion
-substituteFV = error "unimplemented"
+
+----------------------
+-- Feature Learning --
+----------------------
 
 featureLearn :: Set TypedName
              -> Set Integer
@@ -181,16 +234,16 @@ featureLearn names lits maxFeatureSize goodTests badTests = let
   acceptsGoods assertion = And $ Vector.toList $
       Vector.map (\test -> Imp test assertion) goodTests
   rejectsBads assertion = And $ Vector.toList $
-      Vector.map (\test -> Not $ Imp test assertion) goodTests
-  firstToSeparate assertions =
+      Vector.map (\test -> Not $ Imp test assertion) badTests
+  firstThatSeparates assertions =
     case assertions of
       []   -> return Nothing
       a:as -> do
         separates <- checkValid $ And [ acceptsGoods a, rejectsBads a ]
-        if separates then (return $ Just a) else firstToSeparate as
+        if separates then (return $ Just a) else firstThatSeparates as
   featureLearn' size = do
     log_d $ "[PIE] Examining features of length " ++ show size
-    mfeature <- firstToSeparate $ Set.toList $ LI.linearInequalities names lits size
+    mfeature <- firstThatSeparates $ Set.toList $ LI.linearInequalities names lits size
     case mfeature of
       Nothing -> if size >= maxFeatureSize then return Nothing else featureLearn' (size + 1)
       Just feature -> return $ Just feature
