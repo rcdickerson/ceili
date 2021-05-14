@@ -7,6 +7,8 @@ import Test.Framework
 import Ceili.InvariantInference.CollectionUtil
 import Data.Set ( Set )
 import qualified Data.Set as Set
+import Data.Vector ( Vector )
+import qualified Data.Vector as Vector
 
 test_subsetsOfSizeWithEmptySet =
   assertEqual (Set.empty :: Set (Set Int)) $ subsetsOfSize 5 Set.empty
@@ -69,4 +71,14 @@ test_chooseWithReplacement2 = let
                           , [3, 2]
                           , [3, 3] ]
   actual = chooseWithReplacement 2 $ Set.fromList [1, 2, 3]
+  in assertEqual expected actual
+
+test_vecToSetEmpty = let
+  expected = (Set.empty :: Set Int)
+  actual = vecToSet (Vector.empty :: Vector Int)
+  in assertEqual expected actual
+
+test_vecToSet = let
+  expected = Set.fromList [1, 2, 3]
+  actual = vecToSet $ Vector.fromList [2, 3, 2, 1, 3, 1, 1]
   in assertEqual expected actual

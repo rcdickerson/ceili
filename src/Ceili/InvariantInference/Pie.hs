@@ -10,7 +10,8 @@ module Ceili.InvariantInference.Pie
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
-import Ceili.InvariantInference.LinearInequalities
+import qualified Ceili.InvariantInference.CollectionUtil as Collection
+import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Language.BExp
 import Ceili.Language.Imp
 import Ceili.Name
@@ -154,11 +155,10 @@ boolLearn' features posFV negFV k prevClauses = do
 
 clausesWithSize :: Int -> Vector Feature -> Vector Assertion
 clausesWithSize size features =
-  if (size < 1) then error ("Clause size must be at least 1, was: " ++ show size) else
-    case (Vector.length features) of
-      0       -> Vector.empty
-      fLength ->
-        error "unimplemented"
+  if (size < 1) then error ("Clause size must be at least 1, was: " ++ show size)
+  else let
+    subsets = Collection.subsetsOfSize size $ Collection.vecToSet features
+    in error "unimplemented"
 
 filterInconsistentClauses :: Vector Assertion -> FeatureVector -> Ceili (Vector Assertion)
 filterInconsistentClauses clauses fv = do
@@ -190,7 +190,7 @@ featureLearn names lits maxFeatureSize goodTests badTests = let
         if separates then (return $ Just a) else firstToSeparate as
   featureLearn' size = do
     log_d $ "[PIE] Examining features of length " ++ show size
-    mfeature <- firstToSeparate $ Set.toList $ linearInequalities names lits size
+    mfeature <- firstToSeparate $ Set.toList $ LI.linearInequalities names lits size
     case mfeature of
       Nothing -> if size >= maxFeatureSize then return Nothing else featureLearn' (size + 1)
       Just feature -> return $ Just feature

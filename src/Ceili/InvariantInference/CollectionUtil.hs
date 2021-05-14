@@ -4,10 +4,13 @@
 module Ceili.InvariantInference.CollectionUtil
   ( chooseWithReplacement
   , subsetsOfSize
+  , vecToSet
   ) where
 
 import Data.Set ( Set )
 import qualified Data.Set as Set
+import Data.Vector ( Vector )
+import qualified Data.Vector as Vector
 
 -- Like powerSet, but restricted to subsets of the given size.
 subsetsOfSize :: Ord a => Int -> Set a -> Set (Set a)
@@ -32,3 +35,7 @@ chooseWithReplacement n as =
     1 -> Set.map (:[]) as
     _ -> let prev = chooseWithReplacement (n - 1) as
          in  Set.map (uncurry (:)) $ Set.cartesianProduct as prev
+
+-- Convenience conversion from Vector to Set.
+vecToSet :: Ord a => Vector a -> Set a
+vecToSet = Set.fromList . Vector.toList
