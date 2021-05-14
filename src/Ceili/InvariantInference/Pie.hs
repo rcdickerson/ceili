@@ -20,6 +20,7 @@ import qualified Data.Set as Set
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
 
+type Feature = Assertion
 type FeatureVector = Vector (Vector Bool)
 type Test = Assertion -- TODO: Allow other kinds of tests.
 
@@ -92,8 +93,8 @@ vPreGen pre program post goodTests badTests = do
 --   return (Vector.map fst good, Vector.map fst bad)
 
 pie :: Set TypedName
-    -> Set Int
-    -> Vector Assertion
+    -> Set Integer
+    -> Vector Feature
     -> Vector Test
     -> Vector Test
     -> Ceili (Maybe Assertion)
@@ -112,10 +113,10 @@ pie names lits features goodTests badTests = do
           log_e $ "[PIE] Unable to find separating feature (at max depth " ++ show maxDepth ++ ")"
           return Nothing
     Nothing -> do
-      classifier <- boolLearn posFV negFV
+      classifier <- boolLearn features posFV negFV
       return $ Just $ substituteFV features classifier
 
-createFV :: Vector Assertion -> Vector Test -> Ceili FeatureVector
+createFV :: Vector Feature -> Vector Test -> Ceili FeatureVector
 createFV features tests = Vector.generateM (Vector.length tests) testVec
   where
     testVec n = Vector.generateM (Vector.length features) $ checkFeature (tests!n)
@@ -135,20 +136,43 @@ getConflict posFV negFV goodTests badTests = do
 findConflict :: FeatureVector -> FeatureVector -> Maybe (Vector Bool)
 findConflict posFV negFV = Vector.find (\pos -> isJust $ Vector.find (== pos) negFV) posFV
 
-boolLearn :: Set TypedName
-          -> Set Int
-          -> FeatureVector
-          -> FeatureVector
-          -> Ceili Assertion
-boolLearn names lits posFV negFV = do
+boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> Ceili Assertion
+boolLearn features posFV negFV = do
+  log_i "[PIE] Learning boolean formula"
+  boolLearn' features posFV negFV 1 Vector.empty
 
+boolLearn' :: Vector Feature -> FeatureVector -> FeatureVector -> Int -> Vector Assertion -> Ceili Assertion
+boolLearn' features posFV negFV k prevClauses = do
+  log_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
+  let nextClauses = clausesWithSize k features
+  consistentNext <- filterInconsistentClauses nextClauses posFV
+  let clauses     = prevClauses Vector.++ consistentNext
+  mSolution      <- greedySetCover clauses negFV
+  case mSolution of
+    Just solution -> return solution
+    Nothing -> boolLearn' features posFV negFV (k + 1) clauses
+
+clausesWithSize :: Int -> Vector Feature -> Vector Assertion
+clausesWithSize size features =
+  if (size < 1) then error ("Clause size must be at least 1, was: " ++ show size) else
+    case (Vector.length features) of
+      0       -> Vector.empty
+      fLength ->
+        error "unimplemented"
+
+filterInconsistentClauses :: Vector Assertion -> FeatureVector -> Ceili (Vector Assertion)
+filterInconsistentClauses clauses fv = do
+  error "unimplemented"
+
+greedySetCover :: Vector Assertion -> FeatureVector -> Ceili (Maybe Assertion)
+greedySetCover features fv = do
   error "unimplemented"
 
 substituteFV :: Vector Assertion -> Assertion -> Assertion
 substituteFV = error "unimplemented"
 
 featureLearn :: Set TypedName
-             -> Set Int
+             -> Set Integer
              -> Int
              -> Vector Test
              -> Vector Test

@@ -3,6 +3,7 @@ module Ceili.InvariantInference.LinearInequalities
   ) where
 
 import Ceili.Assertion ( Arith(..), Assertion(..) )
+import qualified Ceili.InvariantInference.CollectionUtil as Collection
 import Ceili.Name ( TypedName, namesIn )
 import Data.Maybe ( fromJust, isJust )
 import Data.Set ( Set )
@@ -22,8 +23,8 @@ linearInequalities names lits size = let
                             $ Set.insert (-1)
                               lits
   varNames    = Set.map Var names
-  varGroups   = subsets size' varNames
-  coeffGroups = chooseWithReplacement size' arithLits
+  varGroups   = Collection.subsetsOfSize size' varNames
+  coeffGroups = Collection.chooseWithReplacement size' arithLits
   combos      = catMaybes $ Set.map (uncurry constructLC) $
                 Set.cartesianProduct coeffGroups varGroups
   bounds      = Set.union arithLits varNames
@@ -32,9 +33,9 @@ linearInequalities names lits size = let
                 Set.cartesianProduct combos bounds
   in Set.map (uncurry Lte) ineqPairs
 
-constructLC :: [Arith] -> [Arith] -> Maybe Arith
+constructLC :: [Arith] -> Set Arith -> Maybe Arith
 constructLC coeffs vars = let
-  terms = removeZeros $ map (\(c,v) -> Mul [c, v]) $ zip coeffs vars
+  terms = removeZeros $ map (\(c,v) -> Mul [c, v]) $ zip coeffs (Set.toList vars)
   in case terms of
        [] -> Nothing
        _  -> Just $ Add terms
@@ -57,18 +58,3 @@ removeZeros as = case as of
                          then removeZeros as'
                          else a:(removeZeros as')
                _        -> a:(removeZeros as')
-
-subsets :: Ord a => Int -> Set a -> Set [a]
-subsets 0 _ = Set.singleton []
-subsets size as = if Set.null as then Set.empty else
-  let
-    (a, as') = Set.deleteFindMin as
-    asubs    = Set.map (a:) $ subsets (size - 1) as'
-    others   = subsets size as'
-  in Set.union asubs others
-
-chooseWithReplacement :: Ord a => Int -> Set a -> Set [a]
-chooseWithReplacement 0 _ = Set.singleton []
-chooseWithReplacement n as =
-  let prev = chooseWithReplacement (n - 1) as
-  in  Set.map (uncurry (:)) $ Set.cartesianProduct as prev
