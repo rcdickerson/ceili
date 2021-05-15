@@ -9,12 +9,12 @@ module Ceili.InvariantInference.Pie
   , ClauseOccur(..)
   , clausesWithSize
   , filterInconsistentClauses
-  , loopInvGen
+  , greedySetCover
+  , loopInvGen -- TODO: Everything but loopInvGen is exposed for testing. Create .Internal module?
   ) where
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
-import qualified Ceili.InvariantInference.CollectionUtil as Collection
 import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Language.BExp
 import Ceili.Language.Imp
@@ -26,6 +26,8 @@ import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
+
+import Debug.Trace
 
 --------------
 -- Features --
@@ -166,6 +168,12 @@ data ClauseOccur = CPos | CNeg
   deriving (Show, Ord, Eq)
 type Clause = Map Int ClauseOccur
 
+clauseToAssertion :: Vector Feature -> Clause -> Assertion
+clauseToAssertion features clause = error "unimplemented"
+
+clausesToAssertion :: Vector Feature -> [Clause] -> Assertion
+clausesToAssertion features = And . map (clauseToAssertion features)
+
 clausesWithSize :: Int -> Int -> Vector Clause
 clausesWithSize size numFeatures =
   if numFeatures < 1 then Vector.empty
@@ -183,14 +191,12 @@ clausesWithSize size numFeatures =
       smaller = clausesWithSize size $ numFeatures - 1
       in pos Vector.++ neg Vector.++ smaller
 
-filterInconsistentClauses :: Vector Clause -> FeatureVector -> Vector Clause
-filterInconsistentClauses clauses fv = Vector.filter consistent clauses
+falsifies :: Clause -> Vector Bool -> Bool
+falsifies clause vec = and $ map conflicts $ Map.toList clause
   where
-    conflicts featureV i occur = case occur of
-      CPos -> not $ featureV!i
-      CNeg -> featureV!i
-    falsifies clause featureV = and $ map (uncurry $ conflicts featureV) $ Map.toList clause
-    consistent clause = not . or $ map (falsifies clause) $ Vector.toList fv
+    conflicts (i, occur) = case occur of
+      CPos -> not $ vec!i
+      CNeg -> vec!i
 
 
 ---------------------------------
@@ -209,14 +215,39 @@ boolLearn' features posFV negFV k prevClauses = do
   let nextClauses    = clausesWithSize k $ Vector.length features
   let consistentNext = filterInconsistentClauses nextClauses posFV
   let clauses        = prevClauses Vector.++ consistentNext
-  mSolution         <- greedySetCover clauses negFV
+  let mSolution      = greedySetCover clauses negFV
   case mSolution of
-    Just solution -> return solution
+    Just solution -> return $ clausesToAssertion features $ Vector.toList solution
     Nothing -> boolLearn' features posFV negFV (k + 1) clauses
 
-greedySetCover :: Vector Clause -> FeatureVector -> Ceili (Maybe Assertion)
-greedySetCover features fv = do
-  error "unimplemented"
+filterInconsistentClauses :: Vector Clause -> FeatureVector -> Vector Clause
+filterInconsistentClauses clauses fv = Vector.filter consistent clauses
+  where consistent clause = not . or $ map (falsifies clause) $ Vector.toList fv
+
+greedySetCover :: Vector Clause -> FeatureVector -> Maybe (Vector Clause)
+greedySetCover clauses fv =
+  case Vector.length clauses of
+    0 -> if Vector.length fv == 0 then (Just clauses) else Nothing
+    _ ->
+      let
+        -- Find the clause that eliminates the most feature vectors.
+        step curIdx curClause bestSoFar@(bestCount, _, _, _) = let
+          curFv    = Vector.filter (not . falsifies curClause) fv
+          curCount = (Vector.length fv) - (Vector.length curFv)
+          in if curCount > bestCount
+             then (curCount, curIdx, curClause, curFv)
+             else bestSoFar
+        (elimCount, idx, clause, fv') = Vector.ifoldr step (-1, -1, Map.empty, Vector.empty) clauses
+      in
+        -- If we didn't eliminate any feature vectors, fail.
+        if elimCount < 1 then Nothing
+        -- If the best clause eliminates all FVs, return. Otherwise, recurse.
+        else case length fv' of
+               0 -> Just $ Vector.singleton clause
+               _ -> do
+                 let clauses' = Vector.ifilter (\i _ -> i /= idx) clauses
+                 rest <- greedySetCover clauses' fv'
+                 return $ clause `Vector.cons` rest
 
 
 ----------------------
