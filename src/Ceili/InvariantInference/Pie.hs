@@ -223,7 +223,9 @@ boolLearn' features posFV negFV k prevClauses = do
   log_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
   let nextClauses    = clausesWithSize k $ Vector.length features
   let consistentNext = filterInconsistentClauses nextClauses posFV
-  let clauses        = consistentNext Vector.++ prevClauses
+  let clauses        = consistentNext Vector.++ prevClauses -- Later we foldr so want to append in descending
+                                                            -- clause size order to favor smaller clauses.
+                                                            -- TODO: Make this less fragile.
   let mSolution      = greedySetCover clauses negFV
   case mSolution of
     Just solution -> return $ clausesToAssertion features $ Vector.toList solution
