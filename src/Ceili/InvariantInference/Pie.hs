@@ -8,6 +8,7 @@ module Ceili.InvariantInference.Pie
   ( Clause
   , ClauseOccur(..)
   , clausesWithSize
+  , filterInconsistentClauses
   , loopInvGen
   ) where
 
@@ -31,7 +32,6 @@ import qualified Data.Vector as Vector
 --------------
 type Feature = Assertion
 
-
 ---------------------
 -- Feature Vectors --
 ---------------------
@@ -45,7 +45,6 @@ createFV features tests = Vector.generateM (Vector.length tests) testVec
   where
     testVec n = Vector.generateM (Vector.length features) $ checkFeature (tests!n)
     checkFeature test n = checkValid $ Imp test (features!n)
-
 
 -----------
 -- Tests --
@@ -115,16 +114,6 @@ vPreGen pre program post goodTests badTests = do
         Just counter -> vPreGen pre program post goodTests $
           Vector.cons counter badTests
 
--- partitionTests :: ImpProgram -> Assertion -> [Test] -> Ceili (Vector Test, Vector Test)
--- partitionTests program post tests = do
---   let tagValid test = do
---         sp <- forwardPT test program      -- TODO: This could get bogged down in more invar inference.
---         valid <- checkValid $ Imp sp post --       Replace with actual evaluation semantics?
---         return (test, valid)
---   tagged <- Vector.mapM tagValid $ Vector.fromList tests
---   let (good, bad) = Vector.unstablePartition snd tagged
---   return (Vector.map fst good, Vector.map fst bad)
-
 
 ---------
 -- PIE --
@@ -168,23 +157,6 @@ getConflict posFV negFV goodTests badTests = do
 findConflict :: FeatureVector -> FeatureVector -> Maybe (Vector Bool)
 findConflict posFV negFV = Vector.find (\pos -> isJust $ Vector.find (== pos) negFV) posFV
 
-boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> Ceili Assertion
-boolLearn features posFV negFV = do
-  log_i "[PIE] Learning boolean formula"
-  let atoms = (Vector.++) features $ Vector.map Not features
-  boolLearn' atoms posFV negFV 1 Vector.empty
-
-boolLearn' :: Vector Feature -> FeatureVector -> FeatureVector -> Int -> Vector Assertion -> Ceili Assertion
-boolLearn' features posFV negFV k prevClauses = do
-  log_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
-  let nextClauses = clausesWithSize k $ Vector.length features
-  consistentNext <- filterInconsistentClauses nextClauses posFV
-  let clauses     = prevClauses Vector.++ consistentNext
-  mSolution      <- greedySetCover clauses negFV
-  case mSolution of
-    Just solution -> return solution
-    Nothing -> boolLearn' features posFV negFV (k + 1) clauses
-
 
 -------------
 -- Clauses --
@@ -211,11 +183,38 @@ clausesWithSize size numFeatures =
       smaller = clausesWithSize size $ numFeatures - 1
       in pos Vector.++ neg Vector.++ smaller
 
-filterInconsistentClauses :: Vector Clause -> FeatureVector -> Ceili (Vector Assertion)
-filterInconsistentClauses clauses fv = do
-  error "unimplemented"
+filterInconsistentClauses :: Vector Clause -> FeatureVector -> Vector Clause
+filterInconsistentClauses clauses fv = Vector.filter consistent clauses
+  where
+    conflicts featureV i occur = case occur of
+      CPos -> not $ featureV!i
+      CNeg -> featureV!i
+    falsifies clause featureV = and $ map (uncurry $ conflicts featureV) $ Map.toList clause
+    consistent clause = not . or $ map (falsifies clause) $ Vector.toList fv
 
-greedySetCover :: Vector Assertion -> FeatureVector -> Ceili (Maybe Assertion)
+
+---------------------------------
+-- Boolean Expression Learning --
+---------------------------------
+
+boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> Ceili Assertion
+boolLearn features posFV negFV = do
+  log_i "[PIE] Learning boolean formula"
+  let atoms = (Vector.++) features $ Vector.map Not features
+  boolLearn' atoms posFV negFV 1 Vector.empty
+
+boolLearn' :: Vector Feature -> FeatureVector -> FeatureVector -> Int -> Vector Clause -> Ceili Assertion
+boolLearn' features posFV negFV k prevClauses = do
+  log_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
+  let nextClauses    = clausesWithSize k $ Vector.length features
+  let consistentNext = filterInconsistentClauses nextClauses posFV
+  let clauses        = prevClauses Vector.++ consistentNext
+  mSolution         <- greedySetCover clauses negFV
+  case mSolution of
+    Just solution -> return solution
+    Nothing -> boolLearn' features posFV negFV (k + 1) clauses
+
+greedySetCover :: Vector Clause -> FeatureVector -> Ceili (Maybe Assertion)
 greedySetCover features fv = do
   error "unimplemented"
 
