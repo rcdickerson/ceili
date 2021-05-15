@@ -7,6 +7,7 @@
 module Ceili.InvariantInference.Pie
   ( Clause
   , ClauseOccur(..)
+  , boolLearn
   , clausesWithSize
   , filterInconsistentClauses
   , greedySetCover
@@ -26,8 +27,6 @@ import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
-
-import Debug.Trace
 
 --------------
 -- Features --
@@ -169,10 +168,21 @@ data ClauseOccur = CPos | CNeg
 type Clause = Map Int ClauseOccur
 
 clauseToAssertion :: Vector Feature -> Clause -> Assertion
-clauseToAssertion features clause = error "unimplemented"
+clauseToAssertion features clause = let
+  toAssertion (idx, occur) = case occur of
+    CPos -> features!idx
+    CNeg -> Not $ features!idx
+  in case map toAssertion $ Map.toList clause of
+       []     -> ATrue
+       (a:[]) -> a
+       as     -> Or as
 
 clausesToAssertion :: Vector Feature -> [Clause] -> Assertion
-clausesToAssertion features = And . map (clauseToAssertion features)
+clausesToAssertion features clauses =
+  case map (clauseToAssertion features) clauses of
+    []     -> ATrue
+    (a:[]) -> a
+    as     -> And as
 
 clausesWithSize :: Int -> Int -> Vector Clause
 clausesWithSize size numFeatures =
@@ -181,8 +191,8 @@ clausesWithSize size numFeatures =
   else case size of
     0 -> Vector.empty
     1 -> let
-      pos = Vector.fromList $ map (\i -> Map.singleton i CPos) [0..numFeatures - 1]
-      neg = Vector.fromList $ map (\i -> Map.singleton i CNeg) [0..numFeatures - 1]
+      pos = Vector.fromList $ map (\i -> Map.singleton i CPos) [0..numFeatures-1]
+      neg = Vector.fromList $ map (\i -> Map.singleton i CNeg) [0..numFeatures-1]
       in pos Vector.++ neg
     _ -> let
       prev    = clausesWithSize (size - 1) (numFeatures - 1)
@@ -206,15 +216,14 @@ falsifies clause vec = and $ map conflicts $ Map.toList clause
 boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> Ceili Assertion
 boolLearn features posFV negFV = do
   log_i "[PIE] Learning boolean formula"
-  let atoms = (Vector.++) features $ Vector.map Not features
-  boolLearn' atoms posFV negFV 1 Vector.empty
+  boolLearn' features posFV negFV 1 Vector.empty
 
 boolLearn' :: Vector Feature -> FeatureVector -> FeatureVector -> Int -> Vector Clause -> Ceili Assertion
 boolLearn' features posFV negFV k prevClauses = do
   log_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
   let nextClauses    = clausesWithSize k $ Vector.length features
   let consistentNext = filterInconsistentClauses nextClauses posFV
-  let clauses        = prevClauses Vector.++ consistentNext
+  let clauses        = consistentNext Vector.++ prevClauses
   let mSolution      = greedySetCover clauses negFV
   case mSolution of
     Just solution -> return $ clausesToAssertion features $ Vector.toList solution

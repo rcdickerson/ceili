@@ -4,7 +4,10 @@ module Ceili.InvariantInference.PieTest(htf_thisModulesTests) where
 
 import Test.Framework
 
+import Ceili.Assertion
+import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
+import Ceili.Name
 import qualified Data.Map as Map
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
@@ -142,3 +145,61 @@ test_greedySetCover_noCover = let
   in case greedySetCover clauses fv of
        Nothing     -> return () -- pass
        Just actual -> assertFailure $ "Unexpected cover: " ++ show actual
+
+
+test_boolLearn = let
+  x        = Var $ TypedName (Name "x" 0) Int
+  features = Vector.fromList [ Lt x (Num 0)
+                             , Lt (Num 0) x
+                             , Lt (Num 1) x
+                             , Lt x (Num 5)
+                             , Lt x (Num 10) ]
+  -- Target: 0 < x < 5
+  posFV    = Vector.fromList [ Vector.fromList [False, True,  False, True,  True] -- x = 1
+                             , Vector.fromList [False, True,  True,  True,  True] -- x = 2
+                             ]
+  negFV    = Vector.fromList [ Vector.fromList [True,  False, False, True,  True] -- x = -1
+                             , Vector.fromList [False, False, False, True,  True] -- x = 0
+                             , Vector.fromList [False, True,  True,  False, True] -- x = 7
+                             ]
+  expected = And [ Lt (Num 0) x, Lt x (Num 5)]
+  in do
+    result <- runCeili defaultEnv $ boolLearn features posFV negFV
+    case result of
+      Left err     -> assertFailure err
+      Right actual -> assertEqual expected actual
+
+test_boolLearn_largerClause = let
+  x        = Var $ TypedName (Name "x" 0) Int
+  features = Vector.fromList [ Lt x (Num 0)
+                             , Lt (Num 0) x
+                             , Lt (Num 1) x
+                             , Lt x (Num 5)
+                             , Lt x (Num 10)
+                             , Eq x (Num 10)
+                             , Eq x (Num 7)
+                             ]
+  -- Target: (x < 5  or  x >= 10  or  x = 7)  and  (x >= 0)
+  posFV    = Vector.fromList [ Vector.fromList [False, False, False, True,  True,  False, False] -- x = 0
+                             , Vector.fromList [False, True,  False, True,  True,  False, False] -- x = 1
+                             , Vector.fromList [False, True,  True,  True,  True,  False, False] -- x = 2
+                             , Vector.fromList [False, True,  True,  False, True,  False, True]  -- x = 7
+                             , Vector.fromList [False, True,  True,  False, False, True,  False] -- x = 10
+                             , Vector.fromList [False, True,  True,  False, False, False, False] -- x = 11
+                             ]
+  negFV    = Vector.fromList [ Vector.fromList [True,  False, False, True,  True,  False, False] -- x = -1
+                             , Vector.fromList [False, True,  True,  False, True,  False, False] -- x = 6
+                             , Vector.fromList [False, True,  True,  False, True,  False, False] -- x = 9
+
+                             ]
+  expected = And [ Or [ Lt x (Num 5)
+                      , Not $ Lt x (Num 10)
+                      , Eq x (Num 7)
+                      ]
+                 , Not $ Lt x (Num 0)
+                 ]
+  in do
+    result <- runCeili defaultEnv $ boolLearn features posFV negFV
+    case result of
+      Left err     -> assertFailure err
+      Right actual -> assertEqual expected actual
