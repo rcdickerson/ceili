@@ -37,8 +37,9 @@ constructLC :: [Arith] -> Set Arith -> Maybe Arith
 constructLC coeffs vars = let
   terms = removeZeros $ map (\(c,v) -> Mul [c, v]) $ zip coeffs (Set.toList vars)
   in case terms of
-       [] -> Nothing
-       _  -> Just $ Add terms
+       []     -> Nothing
+       (t:[]) -> Just t
+       _      -> Just $ Add terms
 
 namesDisjoint :: Arith -> Arith -> Bool
 namesDisjoint a b = Set.null $ Set.intersection (namesIn a) (namesIn b)

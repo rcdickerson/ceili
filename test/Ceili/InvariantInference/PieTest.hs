@@ -8,9 +8,12 @@ import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
 import Ceili.Name
+import qualified Ceili.SMT as SMT
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
+import System.Log.FastLogger
 
 assertHasSameItems :: (Ord a, Show a) => Vector a -> Vector a -> IO ()
 assertHasSameItems expectedVec actualVec = let
@@ -18,6 +21,16 @@ assertHasSameItems expectedVec actualVec = let
                            in Map.insert item (current + 1) counts
   countItems = Vector.foldr addToCount Map.empty
   in assertEqual (countItems expectedVec) (countItems actualVec)
+
+assertEquivalent :: Assertion -> Assertion -> IO ()
+assertEquivalent a1 a2 = do
+  let iff = And [ Imp a1 a2, Imp a2 a1 ]
+  result <- withFastLogger LogNone $ \logger ->
+            SMT.checkValidFL logger iff
+  case result of
+    SMT.Valid        -> return () -- pass
+    SMT.Invalid s    -> assertFailure s
+    SMT.ValidUnknown -> assertFailure "Unable to establish equivalence."
 
 
 test_clausesWithSize_0_0 =
@@ -203,3 +216,22 @@ test_boolLearn_largerClause = let
     case result of
       Left err     -> assertFailure err
       Right actual -> assertEqual expected actual
+
+
+test_featureLearn = let
+  x         = TypedName (Name "x" 0) Int
+  names     = Set.singleton x
+  lits      = Set.empty
+  goodTests = Vector.fromList [ Eq (Var x) (Num 1)
+                              , Eq (Var x) (Num 5) ]
+  badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
+                              , Eq (Var x) (Num $ -5) ]
+  expected  = Lt (Num 0) (Var x)
+  in do
+    result <- runCeili defaultEnv $ featureLearn names lits 1 goodTests badTests
+    case result of
+      Left err         -> assertFailure err
+      Right mAssertion ->
+        case mAssertion of
+          Nothing     -> assertFailure "Expected learned feature"
+          Just actual -> assertEquivalent expected actual

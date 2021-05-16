@@ -85,4 +85,4 @@ checkValidWithLog level assertion = do
     Just SMT.ValidUnknown  -> do log_e "SMT unknown"; return False
 
 findCounterexample :: Assertion -> Ceili (Maybe Assertion)
-findCounterexample = error "unimplemented"
+findCounterexample = error "unimplemented" -- TODO

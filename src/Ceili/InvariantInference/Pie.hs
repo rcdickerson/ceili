@@ -9,6 +9,7 @@ module Ceili.InvariantInference.Pie
   , ClauseOccur(..)
   , boolLearn
   , clausesWithSize
+  , featureLearn
   , filterInconsistentClauses
   , greedySetCover
   , loopInvGen -- TODO: Everything but loopInvGen is exposed for testing. Create .Internal module?
@@ -27,6 +28,7 @@ import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
+
 
 --------------
 -- Features --
@@ -275,7 +277,7 @@ featureLearn names lits maxFeatureSize goodTests badTests = let
   acceptsGoods assertion = And $ Vector.toList $
       Vector.map (\test -> Imp test assertion) goodTests
   rejectsBads assertion = And $ Vector.toList $
-      Vector.map (\test -> Not $ Imp test assertion) badTests
+      Vector.map (\test -> Imp test $ Not assertion) badTests
   firstThatSeparates assertions =
     case assertions of
       []   -> return Nothing
@@ -284,8 +286,8 @@ featureLearn names lits maxFeatureSize goodTests badTests = let
         if separates then (return $ Just a) else firstThatSeparates as
   featureLearn' size = do
     log_d $ "[PIE] Examining features of length " ++ show size
-    mfeature <- firstThatSeparates $ Set.toList $ LI.linearInequalities names lits size
-    case mfeature of
+    mFeature <- firstThatSeparates $ Set.toList $ LI.linearInequalities names lits size
+    case mFeature of
       Nothing -> if size >= maxFeatureSize then return Nothing else featureLearn' (size + 1)
       Just feature -> return $ Just feature
   in do
