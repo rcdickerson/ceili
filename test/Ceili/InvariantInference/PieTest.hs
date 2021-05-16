@@ -32,6 +32,16 @@ assertEquivalent a1 a2 = do
     SMT.Invalid s    -> assertFailure s
     SMT.ValidUnknown -> assertFailure "Unable to establish equivalence."
 
+runAndAssertEquivalent :: Assertion -> Ceili (Maybe Assertion) -> IO ()
+runAndAssertEquivalent expected actual = do
+  result <- runCeili defaultEnv actual
+  case result of
+    Left err         -> assertFailure err
+    Right mAssertion ->
+      case mAssertion of
+        Nothing     -> assertFailure "Expected assertion, got Nothing."
+        Just actual -> assertEquivalent expected actual
+
 
 test_clausesWithSize_0_0 =
   assertEqual (Vector.empty :: Vector Clause) $ clausesWithSize 0 0
@@ -227,11 +237,16 @@ test_featureLearn = let
   badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
                               , Eq (Var x) (Num $ -5) ]
   expected  = Lt (Num 0) (Var x)
-  in do
-    result <- runCeili defaultEnv $ featureLearn names lits 1 goodTests badTests
-    case result of
-      Left err         -> assertFailure err
-      Right mAssertion ->
-        case mAssertion of
-          Nothing     -> assertFailure "Expected learned feature"
-          Just actual -> assertEquivalent expected actual
+  in runAndAssertEquivalent expected $ featureLearn names lits 1 goodTests badTests
+
+
+test_pie = let
+  x         = TypedName (Name "x" 0) Int
+  names     = Set.singleton x
+  lits      = Set.empty
+  goodTests = Vector.fromList [ Eq (Var x) (Num 1)
+                              , Eq (Var x) (Num 5) ]
+  badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
+                              , Eq (Var x) (Num $ -5) ]
+  expected  = Lt (Num 0) (Var x)
+  in runAndAssertEquivalent expected $ pie names lits Vector.empty goodTests badTests

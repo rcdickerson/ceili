@@ -11,6 +11,7 @@ module Ceili.InvariantInference.Pie
   , clausesWithSize
   , featureLearn
   , filterInconsistentClauses
+  , pie
   , greedySetCover
   , loopInvGen -- TODO: Everything but loopInvGen is exposed for testing. Create .Internal module?
   ) where
@@ -39,9 +40,6 @@ type Feature = Assertion
 -- Feature Vectors --
 ---------------------
 type FeatureVector = Vector (Vector Bool)
-
-substituteFV :: Vector Assertion -> Assertion -> Assertion
-substituteFV = error "unimplemented"
 
 createFV :: Vector Feature -> Vector Test -> Ceili FeatureVector
 createFV features tests = Vector.generateM (Vector.length tests) testVec
@@ -142,9 +140,7 @@ pie names lits features goodTests badTests = do
         Nothing -> do
           log_e $ "[PIE] Unable to find separating feature (at max depth " ++ show maxDepth ++ ")"
           return Nothing
-    Nothing -> do
-      classifier <- boolLearn features posFV negFV
-      return $ Just $ substituteFV features classifier
+    Nothing -> boolLearn features posFV negFV >>= return . Just
 
 getConflict :: FeatureVector
             -> FeatureVector
