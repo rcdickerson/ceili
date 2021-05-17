@@ -22,6 +22,7 @@ import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Language.BExp
 import Ceili.Language.Imp
 import Ceili.Name
+import Ceili.SMTString ( showSMT )
 import Data.Maybe ( isJust )
 import Data.Set ( Set )
 import qualified Data.Set as Set
@@ -69,6 +70,7 @@ loopInvGen cond body post goodTests = do
                     post
                     (Vector.fromList goodTests)
                     Vector.empty
+  log_d $ "[PIE] LoopInvGen initial invariant: " ++ (show mInvar)
   case mInvar of
     Nothing -> return Nothing
     Just invar -> do
@@ -79,14 +81,15 @@ loopInvGen cond body post goodTests = do
               True -> return $ Just invar
               False -> do
                 mInvar' <- vPreGen (And [invar, condA])
-                                  body
-                                  invar
-                                  (Vector.fromList goodTests)
-                                  Vector.empty
+                                   body
+                                   invar
+                                   (Vector.fromList goodTests)
+                                   Vector.empty
                 case mInvar' of
                   Nothing -> return Nothing
                   Just invar' -> makeInductive $ And [invar, invar']
       mInvar' <- makeInductive invar
+      log_d $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (show mInvar')
       case mInvar' of
         Nothing -> return Nothing
         Just invar' -> do
@@ -102,18 +105,30 @@ vPreGen :: Assertion
         -> Vector Test
         -> Ceili (Maybe Assertion)
 vPreGen pre program post goodTests badTests = do
-  let names = namesInToInt program
+  log_d $ "[PIE] Starting vPreGen pass"
+  log_d $ "[PIE]   pre: " ++ showSMT pre
+  log_d $ "[PIE]   post: " ++ showSMT post
+  log_d $ "[PIE]   Good tests: " ++ (show $ Vector.map showSMT goodTests)
+  log_d $ "[PIE]   Bad tests: " ++ (show $ Vector.map showSMT badTests)
+  let names = Set.unions $ Vector.toList $
+        (Vector.singleton $ namesInToInt program) Vector.++
+        (Vector.map namesInToInt goodTests) Vector.++
+        (Vector.map namesInToInt badTests)
   let lits = Set.empty -- TODO: Lits
   mCandidate <- pie names lits Vector.empty goodTests badTests
   case mCandidate of
     Nothing -> return Nothing
     Just candidate -> do
+      log_d $ "[PIE] vPreGen candidate precondition: " ++ showSMT candidate
       sp <- forwardPT (And [candidate, pre]) program
       mCounter <- findCounterexample $ Imp sp post
       case mCounter of
-        Nothing -> return $ Just candidate
-        Just counter -> vPreGen pre program post goodTests $
-          Vector.cons counter badTests
+        Nothing -> do
+          log_d $ "[PIE] vPreGen found satisfactory precondition: " ++ showSMT candidate
+          return $ Just candidate
+        Just counter -> do
+          log_d $ "[PIE] vPreGen found counterexample: " ++ showSMT counter
+          vPreGen pre program post goodTests $ Vector.cons counter badTests
 
 
 ---------
@@ -131,14 +146,14 @@ pie names lits features goodTests badTests = do
   negFV <- createFV features badTests
   case (getConflict posFV negFV goodTests badTests) of
     Just (xGood, xBad) -> do
-      let maxDepth = 3 -- TODO: Don't hardcode max depth
-      mNewFeature <- featureLearn names lits maxDepth xGood xBad
+      let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
+      mNewFeature <- featureLearn names lits maxFeatureSize xGood xBad
       case mNewFeature of
         Just newFeature -> do
-          log_d $ "[PIE] Learned new feature: " ++ show newFeature
+          log_d $ "[PIE] Learned new feature: " ++ showSMT newFeature
           pie names lits (Vector.cons newFeature features) goodTests badTests
         Nothing -> do
-          log_e $ "[PIE] Unable to find separating feature (at max depth " ++ show maxDepth ++ ")"
+          log_e $ "[PIE] Unable to find separating feature (at max feature size " ++ show maxFeatureSize ++ ")"
           return Nothing
     Nothing -> boolLearn features posFV negFV >>= return . Just
 
@@ -226,7 +241,10 @@ boolLearn' features posFV negFV k prevClauses = do
                                                             -- TODO: Make this less fragile.
   let mSolution      = greedySetCover clauses negFV
   case mSolution of
-    Just solution -> return $ clausesToAssertion features $ Vector.toList solution
+    Just solution -> do
+      let assertion = clausesToAssertion features $ Vector.toList solution
+      log_d $ "Learned boolean expression: " ++ (showSMT assertion)
+      return $ assertion
     Nothing -> boolLearn' features posFV negFV (k + 1) clauses
 
 filterInconsistentClauses :: Vector Clause -> FeatureVector -> Vector Clause
@@ -278,7 +296,7 @@ featureLearn names lits maxFeatureSize goodTests badTests = let
     case assertions of
       []   -> return Nothing
       a:as -> do
-        separates <- checkValid $ And [ acceptsGoods a, rejectsBads a ]
+        separates <- checkValidWithLog LogLevelNone $ And [ acceptsGoods a, rejectsBads a ]
         if separates then (return $ Just a) else firstThatSeparates as
   featureLearn' size = do
     log_d $ "[PIE] Examining features of length " ++ show size
@@ -287,7 +305,11 @@ featureLearn names lits maxFeatureSize goodTests badTests = let
       Nothing -> if size >= maxFeatureSize then return Nothing else featureLearn' (size + 1)
       Just feature -> return $ Just feature
   in do
-    log_d "[PIE] Beginning feature learning pass"
+    log_d   "[PIE] Beginning feature learning pass"
+    log_d $ "[PIE]   Names: " ++ (show $ Set.map showSMT names)
+    log_d $ "[PIE]   Lits: " ++ show lits
+    log_d $ "[PIE]   Good tests: " ++ (show $ Vector.map showSMT goodTests)
+    log_d $ "[PIE]   Bad tests: " ++ (show $ Vector.map showSMT badTests)
     featureLearn' 1
 
 namesInToInt :: CollectableNames c => c -> Set TypedName

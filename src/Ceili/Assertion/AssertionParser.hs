@@ -32,7 +32,7 @@ languageDef = Token.LanguageDef
                              "define-fun", "define-sort", "exit",
                              "get-assertions", "get-assignment", "get-info",
                              "get-option", "get-proof", "set-unsat-core",
-                             "get-value", "pop", "push", "set-info",
+                             "get-value", "model", "pop", "push", "set-info",
                              "set-logic", "set-option"
                             ]
   , Token.reservedOpNames = [ "+", "-", "*", "/"
@@ -66,7 +66,7 @@ parseArith :: String -> Either ParseError Arith
 parseArith arithStr = runParser arithParser () "" arithStr
 
 assertionParser :: AssertionParser
-assertionParser = whitespace >> boolExpr
+assertionParser = whitespace >> (try model <|> boolExpr)
 
 arithParser :: ArithParser
 arithParser = whitespace >> arithExpr
@@ -158,35 +158,35 @@ boolApp = do
   return parsedApp
 
 bArithApp2 :: String -> (Arith -> Arith -> Assertion) -> AssertionParser
-bArithApp2 name fun = do
-  reserved name >> whitespace
+bArithApp2 fname fun = do
+  reserved fname >> whitespace
   operands <- many arithExpr
   applyFun operands
   where
     applyFun (a1 : a2 : []) = return $ fun a1 a2
-    applyFun _ = fail $ name ++ " takes two arguments"
+    applyFun _ = fail $ fname ++ " takes two arguments"
 
 boolApp1 :: String -> (Assertion -> Assertion) -> AssertionParser
-boolApp1 name fun = do
-  reserved name >> whitespace
+boolApp1 fname fun = do
+  reserved fname >> whitespace
   operands <- many boolExpr
   applyFun operands
   where
     applyFun (a:[]) = return $ fun a
-    applyFun _ = fail $ name ++ " takes one argument"
+    applyFun _ = fail $ fname ++ " takes one argument"
 
 boolApp2 :: String -> (Assertion -> Assertion -> Assertion) -> AssertionParser
-boolApp2 name fun = do
-  reserved name >> whitespace
+boolApp2 fname fun = do
+  reserved fname >> whitespace
   operands <- many boolExpr
   applyFun operands
   where
     applyFun (a1:a2:[]) = return $ fun a1 a2
-    applyFun _ = fail $ name ++ " takes two arguments"
+    applyFun _ = fail $ fname ++ " takes two arguments"
 
 boolAppN :: String -> ([Assertion] -> Assertion) -> AssertionParser
-boolAppN name fun = do
-  reserved name >> whitespace
+boolAppN fname fun = do
+  reserved fname >> whitespace
   operands <- many boolExpr
   return $ fun operands
 
@@ -208,16 +208,31 @@ int =
   (return . A.Num . fromIntegral) =<< integer
 
 aArithApp2 :: String -> (Arith -> Arith -> Arith) -> ArithParser
-aArithApp2 name fun = do
-  reserved name >> whitespace
+aArithApp2 fname fun = do
+  reserved fname >> whitespace
   operands <- many arithExpr
   applyFun operands
   where
     applyFun (a1 : a2 : []) = return $ fun a1 a2
-    applyFun _ = fail $ name ++ " takes two arithmetical arguments"
+    applyFun _ = fail $ fname ++ " takes two arithmetical arguments"
 
 aArithAppN :: String -> ([Arith] -> Arith) -> ArithParser
-aArithAppN name fun = do
-  reserved name >> whitespace
+aArithAppN fname fun = do
+  reserved fname >> whitespace
   operands <- many arithExpr
   return $ fun operands
+
+model :: AssertionParser
+model = parens $ do
+  reserved "model"
+  defs <- many defineFun
+  return $ A.And $ map (\(tn, arith) -> A.Eq (A.Var tn) arith) defs
+
+defineFun :: Parsec String () (TypedName, Arith)
+defineFun = parens $ do
+  reserved "define-fun"
+  funName <- name
+  _ <- parens $ many name -- pararms currently unsupported
+  typ <- typeFromString =<< identifier
+  value <- arithExpr
+  return (TypedName funName typ, value)

@@ -13,7 +13,7 @@ module Ceili.CeiliEnv
   , throwError
   ) where
 
-import Ceili.Assertion ( Assertion(..) )
+import Ceili.Assertion ( Assertion(..), parseAssertion )
 import qualified Ceili.SMT as SMT
 import Control.Concurrent.Timeout ( timeout )
 import Control.Monad.IO.Class ( liftIO )
@@ -32,7 +32,7 @@ data LogLevel = LogLevelNone
               | LogLevelInfo
 
 defaultEnv :: Env
-defaultEnv = Env { logger_debug = LogNone
+defaultEnv = Env { logger_debug = LogStdout defaultBufSize -- LogNone
                  , logger_error = LogStderr defaultBufSize
                  , logger_info  = LogStdout defaultBufSize
                  , smtTimeoutMs = 2000 }
@@ -75,14 +75,28 @@ checkValid = checkValidWithLog LogLevelDebug
 checkValidWithLog :: LogLevel -> Assertion -> Ceili Bool
 checkValidWithLog level assertion = do
   logType <- logTypeAt level
-  result  <- withTimeout
-           $ withFastLogger logType
-           $ \logger -> SMT.checkValidFL logger assertion
+  result  <- withTimeout $
+             withFastLogger logType $ \logger ->
+             SMT.checkValidFL logger assertion
   case result of
-    Nothing                -> do log_e "SMT timeout"; return False
-    Just SMT.Valid         -> return True
-    Just (SMT.Invalid msg) -> do log_d msg; return False
-    Just SMT.ValidUnknown  -> do log_e "SMT unknown"; return False
+    Nothing               -> do log_e "SMT timeout"; return False
+    Just SMT.Valid        -> return True
+    Just (SMT.Invalid _)  -> return False
+    Just SMT.ValidUnknown -> do log_e "SMT unknown"; return False
 
 findCounterexample :: Assertion -> Ceili (Maybe Assertion)
-findCounterexample = error "unimplemented" -- TODO
+findCounterexample assertion = do
+  logType <- logTypeAt LogLevelDebug
+  result <- withTimeout $
+            withFastLogger logType $ \logger ->
+            SMT.checkValidFL logger assertion
+  case result of
+    Nothing                  -> do log_e "SMT timeout"; return Nothing
+    Just SMT.Valid           -> return Nothing
+    Just SMT.ValidUnknown    -> do log_e "SMT unknown"; return Nothing
+    Just (SMT.Invalid model) -> case parseAssertion model of
+                                  Left err  -> throwError $ "Error parsing "
+                                               ++ show model
+                                               ++ ":\n"
+                                               ++ show err
+                                  Right cex -> return $ Just cex

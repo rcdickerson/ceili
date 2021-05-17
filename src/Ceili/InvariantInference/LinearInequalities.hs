@@ -4,17 +4,18 @@ module Ceili.InvariantInference.LinearInequalities
 
 import Ceili.Assertion ( Arith(..), Assertion(..) )
 import qualified Ceili.InvariantInference.CollectionUtil as Collection
-import Ceili.Name ( TypedName, namesIn )
-import Data.Maybe ( fromJust, isJust )
+import Ceili.Name ( TypedName )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
--- Enumerate all inequalities of the form i + j*x + k*y + ... <= v,
--- where the left hand side has `size` terms, (i, j, k, ...) are drawn
--- from `lits` + {-1, 0, 1}, (x, y, ...) are drawn from `names`,
--- and v is drawn from `lits` union `names`. The same `lits` may
--- appear multiple places in the inequality, but each `name` will
--- appear at most once.
+-- Enumerate all inequalities of the form i*x + j*y + k*z + ... <= m where:
+-- + The left-hand sizde of each inequality has `size` terms.
+-- + Each tuple of (i, j, k, ..., m) are drawn from `lits` union {-1, 0, 1}.
+-- + Each (x, y, z, ...) are drawn from `names`.
+-- + The same `lits` may appear multiple places in the inequality, but each
+--   `name` will appear at most once.
+-- + If `size` is larger than the set of available names, it is implicity
+--   reduced to the largest value the given set of names accomodates.
 linearInequalities :: Set TypedName -> Set Integer -> Int -> Set Assertion
 linearInequalities names lits size = let
   size' = if (Set.size names < size) then Set.size names else size
@@ -24,38 +25,44 @@ linearInequalities names lits size = let
                               lits
   varNames    = Set.map Var names
   varGroups   = Collection.subsetsOfSize size' varNames
-  coeffGroups = Collection.chooseWithReplacement size' arithLits
-  combos      = catMaybes $ Set.map (uncurry constructLC) $
-                Set.cartesianProduct coeffGroups varGroups
-  bounds      = Set.union arithLits varNames
-  ineqPairs   = Set.filter (uncurry namesDisjoint) $
-                Set.filter (uncurry atLeastOneVar) $
-                Set.cartesianProduct combos bounds
-  in Set.map (uncurry Lte) ineqPairs
+  in Set.unions $ Set.map (constructLCs arithLits) varGroups
 
-constructLC :: [Arith] -> Set Arith -> Maybe Arith
-constructLC coeffs vars = let
-  terms = removeZeros $ map (\(c,v) -> Mul [c, v]) $ zip coeffs (Set.toList vars)
-  in case terms of
-       []     -> Nothing
-       (t:[]) -> Just t
-       _      -> Just $ Add terms
+constructLCs :: Set Arith -> Set Arith -> Set Assertion
+constructLCs lits vars = let
+  lhss = Set.map addOrSingle $
+         Set.filter (not . null) $
+         Set.map simplifyMults $
+         constructLhss lits vars
+  in Set.map (uncurry Lte) $ Set.cartesianProduct lhss lits
 
-namesDisjoint :: Arith -> Arith -> Bool
-namesDisjoint a b = Set.null $ Set.intersection (namesIn a) (namesIn b)
+addOrSingle :: [Arith] -> Arith
+addOrSingle as =
+  case as of
+    a:[] -> a
+    _    -> Add as
 
-atLeastOneVar :: Arith -> Arith -> Bool
-atLeastOneVar a b = not . Set.null $ Set.union (namesIn a) (namesIn b)
+constructLhss :: Set Arith -> Set Arith -> Set [Arith]
+constructLhss lits vars =
+  case Set.size vars of
+    0 -> Set.empty
+    1 -> let hd = Set.elemAt 0 vars
+         in Set.map (\i -> [Mul[i, hd]]) lits
+    _ -> let
+      (hd, vars') = Set.deleteFindMin vars
+      hds = Set.map (\i -> Mul[i, hd]) lits
+      rests = constructLhss lits vars'
+      in Set.map (uncurry (:)) $ Set.cartesianProduct hds rests
 
-catMaybes :: Ord a => Set (Maybe a) -> Set a
-catMaybes set = Set.map fromJust $ Set.filter isJust set
+simplifyMult :: Arith -> Arith
+simplifyMult arith =
+  case arith of
+    Mul [] -> Num 0
+    Mul as -> if any (== Num 0) as then Num 0
+              else case filter (/= Num 1) as of
+                     []   -> Num 1
+                     a:[] -> a
+                     as'  -> Mul as'
+    _      -> arith
 
-removeZeros :: [Arith] -> [Arith]
-removeZeros as = case as of
-  [] -> []
-  (a:as') -> case a of
-               Num 0  -> removeZeros as'
-               Mul ms -> if any (== Num 0) ms
-                         then removeZeros as'
-                         else a:(removeZeros as')
-               _        -> a:(removeZeros as')
+simplifyMults :: [Arith] -> [Arith]
+simplifyMults ariths = filter (/= Num 0) $ map simplifyMult ariths

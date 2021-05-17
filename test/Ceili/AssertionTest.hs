@@ -44,6 +44,10 @@ test_parseAssertion = do
   assertEqual (Right assertion3) $ parseAssertion assertion3SMT
   assertEqual (Right $ Lt (Num (-1)) (Num 1)) $ parseAssertion "(< -1 1)"
 
+test_parseModel = do
+  assertEqual (Right $ And [Eq (Var y0) (Num 1), Eq (Var x0) (Num 0)])
+              (parseAssertion "(model (define-fun y () Int 1) (define-fun x () Int 0) )")
+
 test_subArith = do
   assertEqual ( Not $ And [ Eq (Add [Var x0, Num 1]) (Add [Num 5, Var y0])
                        , Lt (Var x1) (Var x2)] )

@@ -7,6 +7,7 @@ import Test.Framework
 import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
+import Ceili.Language.Imp
 import Ceili.Name
 import qualified Ceili.SMT as SMT
 import qualified Data.Map as Map
@@ -250,3 +251,38 @@ test_pie = let
                               , Eq (Var x) (Num $ -5) ]
   expected  = Lt (Num 0) (Var x)
   in runAndAssertEquivalent expected $ pie names lits Vector.empty goodTests badTests
+
+
+-- This is the "Slow Subtraction" example from Software Foundations, Pierce et al.
+-- https://softwarefoundations.cis.upenn.edu/plf-current/Hoare2.html
+test_loopInvGen = let
+  x = Name "x" 0
+  y = Name "y" 0
+  n = Name "n" 0
+  m = Name "m" 0
+  tn n = TypedName n Int
+  var n = Var $ tn n
+  cond = BNe (AVar x) (ALit 0)
+  body = impSeq [ impAsgn y $ ASub (AVar y) (ALit 1)
+                , impAsgn x $ ASub (AVar x) (ALit 1)]
+  post = Imp (And [ Gte (var m) (Num 0)
+                  , Gte (var n) (Num 0) ])
+             (Eq (var y)
+                 (Sub [var n, var m]))
+  -- Loop will always start in a state where x = m and y = n.
+  tests = [ And [ Eq (var x) (Num 0)
+                , Eq (var y) (Num 0)
+                , Eq (var m) (Num 0)
+                , Eq (var n) (Num 0)]
+          , And [ Eq (var x) (Num 5)
+                , Eq (var y) (Num 3)
+                , Eq (var m) (Num 5)
+                , Eq (var n) (Num 3)]
+          , And [ Eq (var x) (Num 3)
+                , Eq (var y) (Num 5)
+                , Eq (var m) (Num 3)
+                , Eq (var n) (Num 5)]
+          ]
+  expected = Eq (Sub [var y, var x])
+                (Sub [var n, var m])
+  in runAndAssertEquivalent expected $ loopInvGen cond body post tests
