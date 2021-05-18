@@ -3,6 +3,7 @@
 
 module Ceili.InvariantInference.CollectionUtil
   ( chooseWithReplacement
+  , setToVec
   , subsetsOfSize
   , vecToSet
   ) where
@@ -39,3 +40,7 @@ chooseWithReplacement n as =
 -- Convenience conversion from Vector to Set.
 vecToSet :: Ord a => Vector a -> Set a
 vecToSet = Set.fromList . Vector.toList
+
+-- Convenience conversion from Set to Vector.
+setToVec :: Ord a => Set a -> Vector a
+setToVec = Vector.fromList . Set.toList

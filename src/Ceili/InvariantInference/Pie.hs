@@ -70,7 +70,7 @@ loopInvGen cond body post goodTests = do
                     post
                     (Vector.fromList goodTests)
                     Vector.empty
-  log_d $ "[PIE] LoopInvGen initial invariant: " ++ (show mInvar)
+  log_d $ "[PIE] LoopInvGen initial invariant: " ++ (showSMT mInvar)
   case mInvar of
     Nothing -> return Nothing
     Just invar -> do
@@ -80,6 +80,7 @@ loopInvGen cond body post goodTests = do
             case inductive of
               True -> return $ Just invar
               False -> do
+                log_d $ "[PIE] LoopInvGen invariant not inductive, attempting to strengthen"
                 mInvar' <- vPreGen (And [invar, condA])
                                    body
                                    invar
@@ -89,7 +90,7 @@ loopInvGen cond body post goodTests = do
                   Nothing -> return Nothing
                   Just invar' -> makeInductive $ And [invar, invar']
       mInvar' <- makeInductive invar
-      log_d $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (show mInvar')
+      log_d $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
       case mInvar' of
         Nothing -> return Nothing
         Just invar' -> do
@@ -144,17 +145,12 @@ pie :: Set TypedName
 pie names lits features goodTests badTests = do
   posFV <- createFV features goodTests
   negFV <- createFV features badTests
-  case (getConflict posFV negFV goodTests badTests) of
+  case getConflict posFV negFV goodTests badTests of
     Just (xGood, xBad) -> do
-      let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
-      mNewFeature <- featureLearn names lits maxFeatureSize xGood xBad
+      mNewFeature <- findAugmentingFeature names lits xGood xBad
       case mNewFeature of
-        Just newFeature -> do
-          log_d $ "[PIE] Learned new feature: " ++ showSMT newFeature
-          pie names lits (Vector.cons newFeature features) goodTests badTests
-        Nothing -> do
-          log_e $ "[PIE] Unable to find separating feature (at max feature size " ++ show maxFeatureSize ++ ")"
-          return Nothing
+        Nothing         -> return Nothing
+        Just newFeature -> pie names lits (Vector.cons newFeature features) goodTests badTests
     Nothing -> boolLearn features posFV negFV >>= return . Just
 
 getConflict :: FeatureVector
@@ -171,6 +167,24 @@ getConflict posFV negFV goodTests badTests = do
 findConflict :: FeatureVector -> FeatureVector -> Maybe (Vector Bool)
 findConflict posFV negFV = Vector.find (\pos -> isJust $ Vector.find (== pos) negFV) posFV
 
+findAugmentingFeature :: Set TypedName
+                      -> Set Integer
+                      -> Vector Test
+                      -> Vector Test
+                      -> Ceili (Maybe Assertion)
+findAugmentingFeature names lits xGood xBad = do
+  let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
+  mNewFeature <- featureLearn names lits maxFeatureSize xGood xBad
+  case mNewFeature of
+    Just newFeature -> do
+      return $ Just newFeature
+    Nothing -> do
+      case (Vector.length xGood, Vector.length xBad) of
+        (1, 1) -> log_d "[PIE] Single conflict has no separating feature, giving up" >> return Nothing
+        (_, 1) -> log_d "[PIE] Reducing conflict set in good tests" >>
+                  findAugmentingFeature names lits (Vector.drop 1 xGood) xBad
+        _      -> log_d "[PIE] Reducing conflict set in bad tests" >>
+                  findAugmentingFeature names lits xGood (Vector.drop 1 xBad)
 
 -------------
 -- Clauses --
@@ -243,7 +257,7 @@ boolLearn' features posFV negFV k prevClauses = do
   case mSolution of
     Just solution -> do
       let assertion = clausesToAssertion features $ Vector.toList solution
-      log_d $ "Learned boolean expression: " ++ (showSMT assertion)
+      log_d $ "[PIE] Learned boolean expression: " ++ (showSMT assertion)
       return $ assertion
     Nothing -> boolLearn' features posFV negFV (k + 1) clauses
 
