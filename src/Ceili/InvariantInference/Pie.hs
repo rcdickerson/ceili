@@ -64,13 +64,15 @@ loopInvGen :: BExp
            -> [Test]
            -> Ceili (Maybe Assertion)
 loopInvGen cond body post goodTests = do
+  log_i $ "[PIE] Beginning invariant learning"
+  log_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
   let condA = bexpToAssertion cond
   mInvar <- vPreGen (Not condA)
                     impSkip
                     post
                     (Vector.fromList goodTests)
                     Vector.empty
-  log_d $ "[PIE] LoopInvGen initial invariant: " ++ (showSMT mInvar)
+  log_i $ "[PIE] LoopInvGen initial invariant: " ++ (showSMT mInvar)
   case mInvar of
     Nothing -> return Nothing
     Just invar -> do
@@ -80,7 +82,7 @@ loopInvGen cond body post goodTests = do
             case inductive of
               True -> return $ Just invar
               False -> do
-                log_d $ "[PIE] LoopInvGen invariant not inductive, attempting to strengthen"
+                log_i $ "[PIE] LoopInvGen invariant not inductive, attempting to strengthen..."
                 mInvar' <- vPreGen (And [invar, condA])
                                    body
                                    invar
@@ -90,14 +92,58 @@ loopInvGen cond body post goodTests = do
                   Nothing -> return Nothing
                   Just invar' -> makeInductive $ And [invar, invar']
       mInvar' <- makeInductive invar
-      log_d $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
       case mInvar' of
-        Nothing -> return Nothing
-        Just invar' -> do
-          mCounter <- findCounterexample $ invar'
-          case mCounter of
-            Nothing -> return $ Just invar'
-            Just counter -> loopInvGen cond body post (counter:goodTests)
+         Nothing -> log_i "[PIE] LoopInvGen unable to find inductive strengthening of invariant"
+                    >> return Nothing
+         Just invar' -> do
+           log_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
+           log_i $ "[PIE] Attempting to weaken invariant..."
+           let validInvar inv = do
+                 sp <- forwardPT (And [condA, inv]) body
+                 checkValid $ And [ Imp (And [Not condA, inv]) post
+                                  , Imp sp  inv ]
+           weakenedInvar <- weaken validInvar invar'
+           log_i $ "[PIE] Learned invariant: " ++ showSMT weakenedInvar
+           return $ Just weakenedInvar
+      -- The PIE paper now looks for a contradiction with the precond and then weakens
+      -- the invariant if needed. We don't have a precond in the case where we are
+      -- looking for a WP in our PTS, so leave this off for now. (Instead, we do a Pareto
+      -- optimality weakening by iteratively removing clauses unneeded to establish the
+      -- invariant / post -- see `weaken` below.)
+      -- mCounter <- findCounterexample $ Imp precond invar'
+      -- case mCounter of
+      --    Nothing -> return $ Just invar'
+      --    Just counter -> do
+      --      log_d $ "[PIE] LoopInvGen found counterexample to strengthened invariant: "
+      --            ++ (showSMT counter)
+      --      loopInvGen cond body post (counter:goodTests)
+
+weaken :: (Assertion -> Ceili Bool) -> Assertion -> Ceili Assertion
+weaken sufficient assertion = do
+  let conj = conjuncts assertion
+  conj' <- paretoOptimize (sufficient . And) conj
+  return $ case conj' of
+             []     -> ATrue
+             (a:[]) -> a
+             as     -> And as
+
+conjuncts :: Assertion -> [Assertion]
+conjuncts assertion = case assertion of
+  And as -> concat $ map conjuncts as
+  _      -> [assertion]
+
+paretoOptimize :: ([Assertion] -> Ceili Bool) -> [Assertion] -> Ceili [Assertion]
+paretoOptimize sufficient assertions =
+  let
+    optimize (needed, toExamine) =
+      case toExamine of
+        []     -> return $ needed
+        (a:as) -> do
+          worksWithoutA <- sufficient (needed ++ as)
+          if worksWithoutA
+            then optimize (needed, as)
+            else optimize (a:needed, as)
+  in optimize ([], assertions)
 
 vPreGen :: Assertion
         -> ImpProgram
@@ -116,13 +162,13 @@ vPreGen pre program post goodTests badTests = do
         (Vector.map namesInToInt goodTests) Vector.++
         (Vector.map namesInToInt badTests)
   let lits = Set.empty -- TODO: Lits
+  wp <- backwardPT post program
   mCandidate <- pie names lits Vector.empty goodTests badTests
   case mCandidate of
     Nothing -> return Nothing
     Just candidate -> do
       log_d $ "[PIE] vPreGen candidate precondition: " ++ showSMT candidate
-      sp <- forwardPT (And [candidate, pre]) program
-      mCounter <- findCounterexample $ Imp sp post
+      mCounter <- findCounterexample $ Imp (And [candidate, pre]) wp
       case mCounter of
         Nothing -> do
           log_d $ "[PIE] vPreGen found satisfactory precondition: " ++ showSMT candidate
@@ -180,7 +226,8 @@ findAugmentingFeature names lits xGood xBad = do
       return $ Just newFeature
     Nothing -> do
       case (Vector.length xGood, Vector.length xBad) of
-        (1, 1) -> log_d "[PIE] Single conflict has no separating feature, giving up" >> return Nothing
+        (1, 1) -> log_d "[PIE] Single conflict has no separating feature, giving up"
+                  >> return Nothing
         (_, 1) -> log_d "[PIE] Reducing conflict set in good tests" >>
                   findAugmentingFeature names lits (Vector.drop 1 xGood) xBad
         _      -> log_d "[PIE] Reducing conflict set in bad tests" >>
@@ -242,7 +289,7 @@ falsifies clause vec = and $ map conflicts $ Map.toList clause
 
 boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> Ceili Assertion
 boolLearn features posFV negFV = do
-  log_i "[PIE] Learning boolean formula"
+  log_d "[PIE] Learning boolean formula"
   boolLearn' features posFV negFV 1 Vector.empty
 
 boolLearn' :: Vector Feature -> FeatureVector -> FeatureVector -> Int -> Vector Clause -> Ceili Assertion
@@ -250,9 +297,7 @@ boolLearn' features posFV negFV k prevClauses = do
   log_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
   let nextClauses    = clausesWithSize k $ Vector.length features
   let consistentNext = filterInconsistentClauses nextClauses posFV
-  let clauses        = consistentNext Vector.++ prevClauses -- Later we foldr so want to append in descending
-                                                            -- clause size order to favor smaller clauses.
-                                                            -- TODO: Make this less fragile.
+  let clauses        = consistentNext Vector.++ prevClauses
   let mSolution      = greedySetCover clauses negFV
   case mSolution of
     Just solution -> do

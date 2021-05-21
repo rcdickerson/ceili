@@ -265,10 +265,7 @@ test_loopInvGen = let
   cond = BNe (AVar x) (ALit 0)
   body = impSeq [ impAsgn y $ ASub (AVar y) (ALit 1)
                 , impAsgn x $ ASub (AVar x) (ALit 1)]
-  post = Imp (And [ Gte (var m) (Num 0)
-                  , Gte (var n) (Num 0) ])
-             (Eq (var y)
-                 (Sub [var n, var m]))
+  post = (Eq (var y) (Sub [var n, var m]))
   -- Loop will always start in a state where x = m and y = n.
   tests = [ And [ Eq (var x) (Num 0)
                 , Eq (var y) (Num 0)
