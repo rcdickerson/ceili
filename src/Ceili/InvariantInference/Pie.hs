@@ -229,9 +229,14 @@ findAugmentingFeature names lits xGood xBad = do
         (1, 1) -> log_d "[PIE] Single conflict has no separating feature, giving up"
                   >> return Nothing
         (_, 1) -> log_d "[PIE] Reducing conflict set in good tests" >>
-                  findAugmentingFeature names lits (Vector.drop 1 xGood) xBad
+                  findAugmentingFeature names lits (halve xGood) xBad
         _      -> log_d "[PIE] Reducing conflict set in bad tests" >>
-                  findAugmentingFeature names lits xGood (Vector.drop 1 xBad)
+                  findAugmentingFeature names lits xGood (halve xBad)
+
+halve :: Vector a -> Vector a
+halve vec =
+  let len = Vector.length vec
+  in Vector.drop (max (len `quot` 2) 1) vec
 
 -------------
 -- Clauses --
