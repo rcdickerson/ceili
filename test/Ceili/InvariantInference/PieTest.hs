@@ -250,3 +250,7 @@ test_pie = let
                               , Eq (Var x) (Num $ -5) ]
   expected  = Lt (Num 0) (Var x)
   in runAndAssertEquivalent expected $ pie names lits Vector.empty goodTests badTests
+
+--
+-- NB: Full LoopInvGen tests are expensive and are thus located in the verification-test suite.
+--

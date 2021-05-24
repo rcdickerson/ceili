@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 557a2bc06097dab2bd782c64a9735b7a0ead5e42ce8b377355f1c98f5f238886
+-- hash: 34d4ad8fa444a03cf306080fe58dbe76e77f6eda9a5a4fca1f12138ebea37e4e
 
 name:           ceili
 version:        0.1.0.0
@@ -68,15 +68,22 @@ library
     , vector
   default-language: Haskell2010
 
-executable ceili-verification-test
-  main-is: VerificationTestMain.hs
+test-suite ceili-test
+  type: exitcode-stdio-1.0
+  main-is: TestMain.hs
   other-modules:
-      Ceili.ImpVerificationTests
-      Ceili.InvariantInference.PieVerificationTests
+      Ceili.AssertionTest
+      Ceili.InvariantInference.CollectionUtilTest
+      Ceili.InvariantInference.LinearInequalitiesTest
+      Ceili.InvariantInference.PieTest
+      Ceili.Language.FunImpParserTest
+      Ceili.Language.ImpParserTest
+      Ceili.Language.ImpTest
+      Ceili.NameTest
       Paths_ceili
   hs-source-dirs:
-      verification-test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -main-is VerificationTestMain
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HTF
     , base >=4.7 && <5
@@ -94,22 +101,16 @@ executable ceili-verification-test
     , vector
   default-language: Haskell2010
 
-test-suite ceili-test
+test-suite ceili-verification-test
   type: exitcode-stdio-1.0
-  main-is: TestMain.hs
+  main-is: VerificationTestMain.hs
   other-modules:
-      Ceili.AssertionTest
-      Ceili.InvariantInference.CollectionUtilTest
-      Ceili.InvariantInference.LinearInequalitiesTest
-      Ceili.InvariantInference.PieTest
-      Ceili.Language.FunImpParserTest
-      Ceili.Language.ImpParserTest
-      Ceili.Language.ImpTest
-      Ceili.NameTest
+      Ceili.ImpVerificationTests
+      Ceili.InvariantInference.PieVerificationTests
       Paths_ceili
   hs-source-dirs:
-      test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+      verification-test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -main-is VerificationTestMain
   build-depends:
       HTF
     , base >=4.7 && <5

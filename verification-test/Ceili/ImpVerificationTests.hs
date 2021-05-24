@@ -5,7 +5,6 @@ import Test.Framework
 
 import Ceili.Assertion ( Arith(..), Assertion(..) )
 import Ceili.CeiliEnv
-import qualified Ceili.Language.Imp as Imp
 import Ceili.Language.ImpParser
 import Ceili.Name
 import Ceili.PTS.BackwardPT ( backwardPT )

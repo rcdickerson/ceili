@@ -35,19 +35,6 @@ dependencies:
 library:
   source-dirs: src
 
-executables:
-  ceili-verification-test:
-    main:                VerificationTestMain.hs
-    source-dirs:         verification-test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -main-is VerificationTestMain
-    dependencies:
-    - ceili
-    - HTF
-
 tests:
   ceili-test:
     main:                TestMain.hs
@@ -56,6 +43,18 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    dependencies:
+    - ceili
+    - HTF
+
+  ceili-verification-test:
+    main:                VerificationTestMain.hs
+    source-dirs:         verification-test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -main-is VerificationTestMain
     dependencies:
     - ceili
     - HTF

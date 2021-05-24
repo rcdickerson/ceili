@@ -34,6 +34,7 @@ import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
 import qualified Ceili.CeiliEnv as Env
 import qualified Ceili.InvariantInference.Houdini as Houdini
+import qualified Ceili.InvariantInference.Pie as Pie
 import Ceili.Language.AExp ( AExp(..), aexpToArith )
 import Ceili.Language.BExp ( BExp(..), bexpToAssertion )
 import Ceili.Language.Compose

@@ -7,6 +7,7 @@ import Test.Framework
 import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
+import Ceili.Language.BExp ( bexpToAssertion )
 import Ceili.Language.Imp
 import Ceili.Name
 import qualified Ceili.SMT as SMT
@@ -42,8 +43,8 @@ test_loopInvGen = let
   tn n = TypedName n Int
   var n = Var $ tn n
   cond = BNe (AVar x) (ALit 0)
-  body = impSeq [ impAsgn y $ ASub (AVar y) (ALit 1)
-                , impAsgn x $ ASub (AVar x) (ALit 1)]
+  body = (impSeq [ impAsgn y $ ASub (AVar y) (ALit 1)
+                 , impAsgn x $ ASub (AVar x) (ALit 1)]) :: ImpProgram
   post = (Eq (var y) (Sub [var n, var m]))
   -- Loop will always start in a state where x = m and y = n.
   tests = [ And [ Eq (var x) (Num 0)
@@ -61,4 +62,4 @@ test_loopInvGen = let
           ]
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
-  in runAndAssertEquivalent expected $ loopInvGen cond body post tests
+  in runAndAssertEquivalent expected $ loopInvGen (bexpToAssertion cond) body post tests

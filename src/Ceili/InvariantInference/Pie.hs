@@ -19,9 +19,9 @@ module Ceili.InvariantInference.Pie
 import Ceili.Assertion
 import Ceili.CeiliEnv
 import qualified Ceili.InvariantInference.LinearInequalities as LI
-import Ceili.Language.BExp
-import Ceili.Language.Imp
 import Ceili.Name
+import Ceili.PTS.BackwardPT
+import Ceili.PTS.ForwardPT
 import Ceili.SMTString ( showSMT )
 import Data.Maybe ( isJust )
 import Data.Set ( Set )
@@ -58,18 +58,21 @@ type Test = Assertion -- TODO: Allow other kinds of tests.
 -- LoopInvGen --
 ----------------
 
-loopInvGen :: BExp
-           -> ImpProgram
+loopInvGen :: (CollectableNames p, BackwardPT p, ForwardPT p) =>
+              Assertion
+           -> p
            -> Assertion
            -> [Test]
            -> Ceili (Maybe Assertion)
 loopInvGen cond body post goodTests = do
   log_i $ "[PIE] Beginning invariant learning"
+  let testNames = Set.unions $ map namesInToInt goodTests
+      names     = Set.union (namesInToInt body) testNames
+      lits      = Set.empty -- TODO: Lits
   log_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
-  let condA = bexpToAssertion cond
-  mInvar <- vPreGen (Not condA)
-                    impSkip
-                    post
+  mInvar <- vPreGen testNames
+                    lits
+                    (Imp (Not cond) post)
                     (Vector.fromList goodTests)
                     Vector.empty
   log_i $ "[PIE] LoopInvGen initial invariant: " ++ (showSMT mInvar)
@@ -77,15 +80,16 @@ loopInvGen cond body post goodTests = do
     Nothing -> return Nothing
     Just invar -> do
       let makeInductive invar = do
-            sp <- forwardPT (And [invar, condA]) body
+            sp <- forwardPT (And [invar, cond]) body
             inductive <- checkValid $ Imp sp invar
             case inductive of
               True -> return $ Just invar
               False -> do
                 log_i $ "[PIE] LoopInvGen invariant not inductive, attempting to strengthen..."
-                mInvar' <- vPreGen (And [invar, condA])
-                                   body
-                                   invar
+                inductiveWP <- backwardPT invar body
+                mInvar' <- vPreGen names
+                                   lits
+                                   (Imp (And [invar, cond]) inductiveWP)
                                    (Vector.fromList goodTests)
                                    Vector.empty
                 case mInvar' of
@@ -94,13 +98,13 @@ loopInvGen cond body post goodTests = do
       mInvar' <- makeInductive invar
       case mInvar' of
          Nothing -> log_i "[PIE] LoopInvGen unable to find inductive strengthening of invariant"
-                    >> return Nothing
+                 >> return Nothing
          Just invar' -> do
            log_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
            log_i $ "[PIE] Attempting to weaken invariant..."
            let validInvar inv = do
-                 sp <- forwardPT (And [condA, inv]) body
-                 checkValid $ And [ Imp (And [Not condA, inv]) post
+                 sp <- forwardPT (And [cond, inv]) body
+                 checkValid $ And [ Imp (And [Not cond, inv]) post
                                   , Imp sp  inv ]
            weakenedInvar <- weaken validInvar invar'
            log_i $ "[PIE] Learned invariant: " ++ showSMT weakenedInvar
@@ -145,37 +149,30 @@ paretoOptimize sufficient assertions =
             else optimize (a:needed, as)
   in optimize ([], assertions)
 
-vPreGen :: Assertion
-        -> ImpProgram
+vPreGen :: Set TypedName
+        -> Set Integer
         -> Assertion
         -> Vector Test
         -> Vector Test
         -> Ceili (Maybe Assertion)
-vPreGen pre program post goodTests badTests = do
+vPreGen names lits weakestPre goodTests badTests = do
   log_d $ "[PIE] Starting vPreGen pass"
-  log_d $ "[PIE]   pre: " ++ showSMT pre
-  log_d $ "[PIE]   post: " ++ showSMT post
-  log_d $ "[PIE]   Good tests: " ++ (show $ Vector.map showSMT goodTests)
-  log_d $ "[PIE]   Bad tests: " ++ (show $ Vector.map showSMT badTests)
-  let names = Set.unions $ Vector.toList $
-        (Vector.singleton $ namesInToInt program) Vector.++
-        (Vector.map namesInToInt goodTests) Vector.++
-        (Vector.map namesInToInt badTests)
-  let lits = Set.empty -- TODO: Lits
-  wp <- backwardPT post program
+  log_d $ "[PIE]   weakest precondition: " ++ showSMT weakestPre
+  log_d $ "[PIE]   good tests: " ++ (show $ Vector.map showSMT goodTests)
+  log_d $ "[PIE]   bad tests: " ++ (show $ Vector.map showSMT badTests)
   mCandidate <- pie names lits Vector.empty goodTests badTests
   case mCandidate of
     Nothing -> return Nothing
     Just candidate -> do
       log_d $ "[PIE] vPreGen candidate precondition: " ++ showSMT candidate
-      mCounter <- findCounterexample $ Imp (And [candidate, pre]) wp
+      mCounter <- findCounterexample $ Imp candidate weakestPre
       case mCounter of
         Nothing -> do
           log_d $ "[PIE] vPreGen found satisfactory precondition: " ++ showSMT candidate
           return $ Just candidate
         Just counter -> do
           log_d $ "[PIE] vPreGen found counterexample: " ++ showSMT counter
-          vPreGen pre program post goodTests $ Vector.cons counter badTests
+          vPreGen names lits weakestPre goodTests $ Vector.cons counter badTests
 
 
 ---------
