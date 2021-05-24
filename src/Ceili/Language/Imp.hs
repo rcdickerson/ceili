@@ -221,8 +221,8 @@ instance BackwardPT e => BackwardPT (ImpIf e) where
         ncond  = A.Not $ cond
     return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
 
-instance (CollectableNames e, BackwardPT e) => BackwardPT (ImpWhile e) where
-  backwardPT post (ImpWhile condB body (minv, _)) = let
+instance (CollectableNames e, BackwardPT e, ForwardPT e) => BackwardPT (ImpWhile e) where
+  backwardPT post (ImpWhile condB body (mInv, _)) = let
     cond          = bexpToAssertion condB
     varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
     vars          = Set.toList varSet
@@ -230,10 +230,14 @@ instance (CollectableNames e, BackwardPT e) => BackwardPT (ImpWhile e) where
     (orig, fresh) = unzip $ Map.toList freshMapping
     freshen       = Name.substituteAll orig fresh
     qNames        = Set.toList $ namesInToInt fresh
-    inv           = case minv of
-                      Just i  -> i
-                      Nothing -> error "Backward invariant inference unsupported"
     in do
+      inv <- case mInv of
+               Just i  -> return i
+               Nothing -> do
+                 mInferredInv <- Pie.loopInvGen cond body post []
+                 case mInferredInv of
+                   Just inv -> return inv
+                   Nothing  -> Env.throwError "Unable to infer loop invariant."
       bodyWP <- backwardPT inv body
       let loopWP = A.Forall qNames
                    (freshen $ A.Imp (A.And [cond, inv]) bodyWP)

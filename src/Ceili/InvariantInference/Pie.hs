@@ -105,7 +105,7 @@ loopInvGen cond body post goodTests = do
            let validInvar inv = do
                  sp <- forwardPT (And [cond, inv]) body
                  checkValid $ And [ Imp (And [Not cond, inv]) post
-                                  , Imp sp  inv ]
+                                  , Imp sp inv ]
            weakenedInvar <- weaken validInvar invar'
            log_i $ "[PIE] Learned invariant: " ++ showSMT weakenedInvar
            return $ Just weakenedInvar
@@ -114,6 +114,9 @@ loopInvGen cond body post goodTests = do
       -- looking for a WP in our PTS, so leave this off for now. (Instead, we do a Pareto
       -- optimality weakening by iteratively removing clauses unneeded to establish the
       -- invariant / post -- see `weaken` below.)
+      --
+      -- The code for precondition-based weakening would be something like:
+      --
       -- mCounter <- findCounterexample $ Imp precond invar'
       -- case mCounter of
       --    Nothing -> return $ Just invar'
@@ -125,7 +128,7 @@ loopInvGen cond body post goodTests = do
 weaken :: (Assertion -> Ceili Bool) -> Assertion -> Ceili Assertion
 weaken sufficient assertion = do
   let conj = conjuncts assertion
-  conj' <- paretoOptimize (sufficient . And) conj
+  conj' <- paretoOptimize (sufficient . conjoin) conj
   return $ case conj' of
              []     -> ATrue
              (a:[]) -> a
@@ -135,6 +138,10 @@ conjuncts :: Assertion -> [Assertion]
 conjuncts assertion = case assertion of
   And as -> concat $ map conjuncts as
   _      -> [assertion]
+
+conjoin :: [Assertion] -> Assertion
+conjoin [] = ATrue
+conjoin as = And as
 
 paretoOptimize :: ([Assertion] -> Ceili Bool) -> [Assertion] -> Ceili [Assertion]
 paretoOptimize sufficient assertions =
