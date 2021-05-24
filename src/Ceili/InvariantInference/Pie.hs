@@ -129,10 +129,7 @@ weaken :: (Assertion -> Ceili Bool) -> Assertion -> Ceili Assertion
 weaken sufficient assertion = do
   let conj = conjuncts assertion
   conj' <- paretoOptimize (sufficient . conjoin) conj
-  return $ case conj' of
-             []     -> ATrue
-             (a:[]) -> a
-             as     -> And as
+  return $ conjoin conj'
 
 conjuncts :: Assertion -> [Assertion]
 conjuncts assertion = case assertion of
@@ -140,8 +137,10 @@ conjuncts assertion = case assertion of
   _      -> [assertion]
 
 conjoin :: [Assertion] -> Assertion
-conjoin [] = ATrue
-conjoin as = And as
+conjoin as = case as of
+  []     -> ATrue
+  (a:[]) -> a
+  _      -> And as
 
 paretoOptimize :: ([Assertion] -> Ceili Bool) -> [Assertion] -> Ceili [Assertion]
 paretoOptimize sufficient assertions =
@@ -155,6 +154,11 @@ paretoOptimize sufficient assertions =
             then optimize (needed, as)
             else optimize (a:needed, as)
   in optimize ([], assertions)
+
+
+-------------
+-- vPreGen --
+-------------
 
 vPreGen :: Set TypedName
         -> Set Integer
