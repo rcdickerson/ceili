@@ -19,7 +19,9 @@ module Ceili.Language.Imp
   , Measure
   , MVarInvar
   , Name(..)
+  , State
   , backwardPT
+  , evalImp
   , forwardPT
   , impAsgn
   , impIf
@@ -35,8 +37,8 @@ import qualified Ceili.Assertion.AssertionLanguage as A
 import qualified Ceili.CeiliEnv as Env
 import qualified Ceili.InvariantInference.Houdini as Houdini
 import qualified Ceili.InvariantInference.Pie as Pie
-import Ceili.Language.AExp ( AExp(..), aexpToArith )
-import Ceili.Language.BExp ( BExp(..), bexpToAssertion )
+import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
+import Ceili.Language.BExp ( BExp(..), bexpToAssertion, evalBExp )
 import Ceili.Language.Compose
 import Ceili.Name ( CollectableNames(..)
                   , MappableNames(..)
@@ -112,33 +114,90 @@ impWhile cond body mVarInvar = inject $ ImpWhile cond body mVarInvar
 
 instance CollectableNames (ImpSkip e) where
   namesIn ImpSkip = Set.empty
+
 instance CollectableNames (ImpAsgn e) where
   namesIn (ImpAsgn var aexp) = Set.insert var $ namesIn aexp
+
 instance CollectableNames e => CollectableNames (ImpSeq e) where
   namesIn (ImpSeq stmts) = namesIn stmts
+
 instance CollectableNames e => CollectableNames (ImpIf e) where
   namesIn (ImpIf cond bThen bElse) = Set.unions
     [ (namesIn cond), (namesIn bThen), (namesIn bElse)]
+
 instance CollectableNames e => CollectableNames (ImpWhile e) where
   namesIn (ImpWhile cond body _) = Set.union (namesIn cond) (namesIn body)
+
 instance CollectableNames ImpProgram
   where namesIn (In p) = namesIn p
 
+
 instance MappableNames (ImpSkip e) where
   mapNames _ ImpSkip = ImpSkip
+
 instance MappableNames (ImpAsgn e) where
   mapNames f (ImpAsgn var aexp) = ImpAsgn (f var) (mapNames f aexp)
+
 instance MappableNames e => MappableNames (ImpSeq e) where
   mapNames f (ImpSeq stmts) = ImpSeq $ mapNames f stmts
+
 instance MappableNames e => MappableNames (ImpIf e) where
   mapNames f (ImpIf c t e) = ImpIf (mapNames f c) (mapNames f t) (mapNames f e)
-instance MappableNames e => MappableNames (ImpWhile  e) where
+
+instance MappableNames e => MappableNames (ImpWhile e) where
     mapNames f (ImpWhile cond body (invar, meas)) =
       ImpWhile (mapNames f cond)
                 (mapNames f body)
                 (mapNames f invar, mapNames f meas)
+
 instance MappableNames ImpProgram
   where mapNames f (In p) = In $ mapNames f p
+
+
+-----------------
+-- Interpreter --
+-----------------
+
+class EvalImp f where
+  evalImp :: State -> f -> Maybe Int -> Maybe State
+
+instance (EvalImp (f e), EvalImp (g e)) => EvalImp ((f :+: g) e) where
+  evalImp st (Inl f) fuel = evalImp st f fuel
+  evalImp st (Inr g) fuel = evalImp st g fuel
+
+instance EvalImp (ImpSkip e) where
+  evalImp st _ _ = Just st
+
+instance EvalImp (ImpAsgn e) where
+  evalImp st (ImpAsgn var aexp) _ = Just $ Map.insert var (evalAExp st aexp) st
+
+instance EvalImp e => EvalImp (ImpSeq e) where
+  evalImp st (ImpSeq stmts) fuel = case stmts of
+    [] -> Just st
+    (stmt:rest) -> do
+      st' <- evalImp st stmt fuel
+      evalImp st' (ImpSeq rest) fuel
+
+instance EvalImp e => EvalImp (ImpIf e) where
+  evalImp st (ImpIf c t f) fuel = if (evalBExp st c)
+                                  then (evalImp st t fuel)
+                                  else (evalImp st f fuel)
+
+instance EvalImp e => EvalImp (ImpWhile e) where
+  evalImp st (ImpWhile cond body im) fuel =
+    case (evalBExp st cond) of
+      False -> Just st
+      True  -> case fuel of
+        Nothing        -> step Nothing
+        Just n | n > 0 -> step $ Just (n - 1)
+        _              -> Nothing
+    where
+      step fuel' = do
+        st' <- evalImp st body fuel'
+        evalImp st' (ImpWhile cond body im) fuel'
+
+instance EvalImp ImpProgram where
+  evalImp st (In program) fuel = evalImp st program fuel
 
 
 -------------------------------------------

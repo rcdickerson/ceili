@@ -1,11 +1,13 @@
 module Ceili.Language.BExp
   ( BExp(..)
+  , State
   , bexpToAssertion
+  , evalBExp
   ) where
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
-import Ceili.Language.AExp ( AExp(..), aexpToArith )
+import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
 import Ceili.Name ( CollectableNames(..)
                   , MappableNames(..) )
 import qualified Data.Set  as Set
@@ -68,3 +70,22 @@ bexpToAssertion bexp = case bexp of
   BGe  a1 a2 -> A.Gte (aexpToArith a1) (aexpToArith a2)
   BGt  a1 a2 -> A.Gt  (aexpToArith a1) (aexpToArith a2)
   BLt  a1 a2 -> A.Lt  (aexpToArith a1) (aexpToArith a2)
+
+
+-----------------
+-- Interpreter --
+-----------------
+
+evalBExp :: State -> BExp -> Bool
+evalBExp st bexp = case bexp of
+  BTrue      -> True
+  BFalse     -> False
+  BNot b     -> not $ evalBExp st b
+  BAnd b1 b2 -> (evalBExp st b1) && (evalBExp st b2)
+  BOr  b1 b2 -> (evalBExp st b1) || (evalBExp st b2)
+  BEq  b1 b2 -> (evalAExp st b1) == (evalAExp st b2)
+  BNe  b1 b2 -> (evalAExp st b1) /= (evalAExp st b2)
+  BLe  b1 b2 -> (evalAExp st b1) <= (evalAExp st b2)
+  BGe  b1 b2 -> (evalAExp st b1) >= (evalAExp st b2)
+  BGt  b1 b2 -> (evalAExp st b1) >  (evalAExp st b2)
+  BLt  b1 b2 -> (evalAExp st b1) <  (evalAExp st b2)

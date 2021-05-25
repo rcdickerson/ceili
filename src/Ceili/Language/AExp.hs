@@ -1,6 +1,8 @@
 module Ceili.Language.AExp
   ( AExp(..)
+  , State
   , aexpToArith
+  , evalAExp
   ) where
 
 import qualified Ceili.Assertion.AssertionLanguage as A
@@ -9,7 +11,9 @@ import Ceili.Name ( CollectableNames(..)
                   , Name(..)
                   , TypedName(..) )
 import qualified Ceili.Name as Name
-import qualified Data.Set  as Set
+import Data.Map ( Map )
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 data AExp
   = ALit Integer
@@ -62,3 +66,21 @@ aexpToArith aexp = case aexp of
     base  = aexpToArith aexp1
     power = aexpToArith aexp2
     in A.Pow base power
+
+
+-----------------
+-- Interpreter --
+-----------------
+
+type State = Map Name Integer
+
+evalAExp :: State -> AExp -> Integer
+evalAExp st aexp = case aexp of
+  ALit i       -> i
+  AVar v       -> Map.findWithDefault 0 v st
+  AAdd lhs rhs -> (evalAExp st lhs) + (evalAExp st rhs)
+  ASub lhs rhs -> (evalAExp st lhs) - (evalAExp st rhs)
+  AMul lhs rhs -> (evalAExp st lhs) * (evalAExp st rhs)
+  ADiv lhs rhs -> (evalAExp st lhs) `quot` (evalAExp st rhs)
+  AMod lhs rhs -> (evalAExp st lhs) `mod` (evalAExp st rhs)
+  APow lhs rhs -> (evalAExp st lhs) ^ (evalAExp st rhs)

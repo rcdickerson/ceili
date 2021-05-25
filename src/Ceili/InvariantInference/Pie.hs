@@ -246,6 +246,7 @@ halve vec =
   let len = Vector.length vec
   in Vector.drop (max (len `quot` 2) 1) vec
 
+
 -------------
 -- Clauses --
 -------------
