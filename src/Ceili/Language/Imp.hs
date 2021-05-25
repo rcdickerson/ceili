@@ -8,6 +8,7 @@
 module Ceili.Language.Imp
   ( AExp(..)
   , BExp(..)
+  , Fuel(..)
   , ImpAsgn(..)
   , ImpExpr(..)
   , ImpIf(..)
@@ -158,8 +159,11 @@ instance MappableNames ImpProgram
 -- Interpreter --
 -----------------
 
+data Fuel = Fuel Int
+          | InfiniteFuel
+
 class EvalImp f where
-  evalImp :: State -> f -> Maybe Int -> Maybe State
+  evalImp :: State -> f -> Fuel -> Maybe State
 
 instance (EvalImp (f e), EvalImp (g e)) => EvalImp ((f :+: g) e) where
   evalImp st (Inl f) fuel = evalImp st f fuel
@@ -188,8 +192,8 @@ instance EvalImp e => EvalImp (ImpWhile e) where
     case (evalBExp st cond) of
       False -> Just st
       True  -> case fuel of
-        Nothing        -> step Nothing
-        Just n | n > 0 -> step $ Just (n - 1)
+        InfiniteFuel   -> step InfiniteFuel
+        Fuel n | n > 0 -> step $ Fuel (n - 1)
         _              -> Nothing
     where
       step fuel' = do

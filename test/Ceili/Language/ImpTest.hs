@@ -61,13 +61,13 @@ test_mapNames = do
 
 test_evalImp_Skip = let
   st = mkSt [("x", 1), ("y", 2)]
-  in assertEqual (Just st) $ evalImp st (impSkip :: ImpProgram) Nothing
+  in assertEqual (Just st) $ evalImp st (impSkip :: ImpProgram) InfiniteFuel
 
 test_evalImp_Asgn = let
   st = mkSt [("x", 1), ("y", 2)]
   prog = (impAsgn x $ AAdd (AVar y) (ALit 3)) :: ImpProgram
   expected = mkSt [("x", 5), ("y", 2)]
-  in assertEqual (Just expected) $ evalImp st prog Nothing
+  in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_Seq = let
   st = mkSt [("x", 1), ("y", 2)]
@@ -76,7 +76,7 @@ test_evalImp_Seq = let
                  , impAsgn x $ ASub (AVar y) (ALit 5)
                  ]) :: ImpProgram
   expected = mkSt [("x", 2), ("y", 7)]
-  in assertEqual (Just expected) $ evalImp st prog Nothing
+  in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_IfTrue = let
   st = mkSt [("x", 1), ("y", -1)]
@@ -84,7 +84,7 @@ test_evalImp_IfTrue = let
                 (impAsgn y $ ALit 1)
                 (impAsgn y $ ALit 0)) :: ImpProgram
   expected = mkSt [("x", 1), ("y", 1)]
-  in assertEqual (Just expected) $ evalImp st prog Nothing
+  in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_IfFalse = let
   st = mkSt [("x", 1), ("y", -1)]
@@ -92,7 +92,7 @@ test_evalImp_IfFalse = let
                 (impAsgn y $ ALit 1)
                 (impAsgn y $ ALit 0)) :: ImpProgram
   expected = mkSt [("x", 1), ("y", 0)]
-  in assertEqual (Just expected) $ evalImp st prog Nothing
+  in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_WhileFalse = let
   st = mkSt [("x", 11), ("y", 0)]
@@ -102,7 +102,7 @@ test_evalImp_WhileFalse = let
                            ])
                    (Nothing, Nothing)) :: ImpProgram
   expected = mkSt [("x", 11), ("y", 0)]
-  in assertEqual (Just expected) $ evalImp st prog Nothing
+  in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_WhileLoop = let
   st = mkSt [("x", 0), ("y", 0)]
@@ -112,14 +112,14 @@ test_evalImp_WhileLoop = let
                            ])
                    (Nothing, Nothing)) :: ImpProgram
   expected = mkSt [("x", 10), ("y", 1)]
-  in assertEqual (Just expected) $ evalImp st prog Nothing
+  in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_InfiniteLoopRunsOutOfFuel = let
   st = mkSt [("x", 0), ("y", 0)]
   prog = (impWhile (BLt (AVar x) (ALit 10))
                    impSkip
                    (Nothing, Nothing)) :: ImpProgram
-  in assertEqual Nothing $ evalImp st prog (Just 100)
+  in assertEqual Nothing $ evalImp st prog (Fuel 100)
 
 test_evalImp_slowMult = let
   st = mkSt [("x", 5), ("y", 7)]
@@ -134,4 +134,4 @@ test_evalImp_slowMult = let
                    (Nothing, Nothing)
                  ]) :: ImpProgram
   expected = mkSt [("x", 5), ("y", 7), ("c", 0), ("z", 35)]
-  in assertEqual (Just expected) $ evalImp st prog (Just 100)
+  in assertEqual (Just expected) $ evalImp st prog (Fuel 100)
