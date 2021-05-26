@@ -115,11 +115,8 @@ test_evalImp_WhileLoop = let
   in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_InfiniteLoopRunsOutOfFuel = let
-  st = mkSt [("x", 0), ("y", 0)]
-  prog = (impWhile (BLt (AVar x) (ALit 10))
-                   impSkip
-                   (Nothing, Nothing)) :: ImpProgram
-  in assertEqual Nothing $ evalImp st prog (Fuel 100)
+  prog = (impWhile BTrue impSkip (Nothing, Nothing)) :: ImpProgram
+  in assertEqual Nothing $ evalImp Map.empty prog (Fuel 100)
 
 test_evalImp_slowMult = let
   st = mkSt [("x", 5), ("y", 7)]
