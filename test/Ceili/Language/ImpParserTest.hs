@@ -52,5 +52,4 @@ test_while = let
   prog = "while x == 5 do y := 10; end"
   expected = impWhile (BEq (v "x") (ALit 5))
                  (impAsgn y (ALit 10))
-                 (Nothing, Nothing)
   in assertCorrectParse prog expected

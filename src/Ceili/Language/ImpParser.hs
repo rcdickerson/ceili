@@ -115,7 +115,8 @@ parseWhile lexer = do
   body  <- many1 $ try $ statement lexer
   Token.whiteSpace lexer
   Token.reserved lexer "end"
-  return $ impWhile cond (impSeqIfNeeded body) (inv, var)
+  let meta = ImpWhileMetadata inv var Nothing
+  return $ impWhileWithMeta cond (impSeqIfNeeded body) meta
 
 name :: TokenParser s -> ImpParser s Name
 name lexer = Token.identifier lexer >>= (return . Name.fromString)

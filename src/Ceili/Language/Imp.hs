@@ -16,12 +16,13 @@ module Ceili.Language.Imp
   , ImpSeq(..)
   , ImpSkip(..)
   , ImpWhile(..)
+  , ImpWhileMetadata(..)
   , Invariant
   , Measure
-  , MVarInvar
   , Name(..)
   , State
   , backwardPT
+  , emptyWhileMetadata
   , evalImp
   , forwardPT
   , impAsgn
@@ -30,6 +31,7 @@ module Ceili.Language.Imp
   , impSeqIfNeeded
   , impSkip
   , impWhile
+  , impWhileWithMeta
   , inject
   ) where
 
@@ -75,12 +77,27 @@ data ImpSeq e = ImpSeq [e]
 data ImpIf e = ImpIf BExp e e
   deriving (Eq, Ord, Show, Functor)
 
-data ImpWhile e = ImpWhile BExp e MVarInvar
-  deriving (Eq, Ord, Show, Functor)
-
 type Invariant = Assertion
 type Measure   = A.Arith
-type MVarInvar = (Maybe Invariant, Maybe Measure)
+data ImpWhileMetadata =
+  ImpWhileMetadata { iwm_invariant  :: Maybe Invariant
+                   , iwm_measure    :: Maybe Measure
+                   , iwm_testStates :: Maybe [Assertion]
+                   } deriving (Eq, Ord, Show)
+
+emptyWhileMetadata :: ImpWhileMetadata
+emptyWhileMetadata = ImpWhileMetadata Nothing Nothing Nothing
+
+instance MappableNames ImpWhileMetadata where
+  mapNames f (ImpWhileMetadata mInvar mMeasure mTests) =
+    let
+      mInvar'   = do invar   <- mInvar;   return $ mapNames f invar
+      mMeasure' = do measure <- mMeasure; return $ mapNames f measure
+      mTests'   = do tests   <- mTests;   return $ mapNames f tests
+    in ImpWhileMetadata mInvar' mMeasure' mTests'
+
+data ImpWhile e = ImpWhile BExp e ImpWhileMetadata
+  deriving (Eq, Ord, Show, Functor)
 
 type ImpProgram = ImpExpr ( ImpSkip
                         :+: ImpAsgn
@@ -109,8 +126,11 @@ impSeqIfNeeded stmts = case stmts of
 impIf :: (ImpIf :<: f) => BExp -> ImpExpr f -> ImpExpr f -> ImpExpr f
 impIf cond tBranch eBranch = inject $ ImpIf cond tBranch eBranch
 
-impWhile :: (ImpWhile :<: f) => BExp -> ImpExpr f -> MVarInvar -> ImpExpr f
-impWhile cond body mVarInvar = inject $ ImpWhile cond body mVarInvar
+impWhile :: (ImpWhile :<: f) => BExp -> ImpExpr f -> ImpExpr f
+impWhile cond body = inject $ ImpWhile cond body emptyWhileMetadata
+
+impWhileWithMeta :: (ImpWhile :<: f) => BExp -> ImpExpr f -> ImpWhileMetadata -> ImpExpr f
+impWhileWithMeta cond body meta = inject $ ImpWhile cond body meta
 
 
 instance CollectableNames (ImpSkip e) where
@@ -146,10 +166,8 @@ instance MappableNames e => MappableNames (ImpIf e) where
   mapNames f (ImpIf c t e) = ImpIf (mapNames f c) (mapNames f t) (mapNames f e)
 
 instance MappableNames e => MappableNames (ImpWhile e) where
-    mapNames f (ImpWhile cond body (invar, meas)) =
-      ImpWhile (mapNames f cond)
-                (mapNames f body)
-                (mapNames f invar, mapNames f meas)
+    mapNames f (ImpWhile cond body meta) =
+      ImpWhile (mapNames f cond) (mapNames f body) (mapNames f meta)
 
 instance MappableNames ImpProgram
   where mapNames f (In p) = In $ mapNames f p
@@ -237,10 +255,10 @@ instance ForwardPT e => ForwardPT (ImpIf e) where
     return $ A.Or [postS1, postS2]
 
 instance (CollectableNames e, ForwardPT e) => ForwardPT (ImpWhile e) where
-  forwardPT pre (ImpWhile b body (minv, _)) = do
+  forwardPT pre (ImpWhile b body meta) = do
     let cond = bexpToAssertion b
     let bodySP pre' = forwardPT pre' body
-    inv <- case minv of
+    inv <- case (iwm_invariant meta) of
       Nothing  -> Houdini.infer (namesInToInt body) Set.empty 2 pre bodySP -- TODO: Lits
       Just inv -> return inv
     bodyInvSP <- bodySP inv
@@ -285,7 +303,7 @@ instance BackwardPT e => BackwardPT (ImpIf e) where
     return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
 
 instance (CollectableNames e, BackwardPT e, ForwardPT e) => BackwardPT (ImpWhile e) where
-  backwardPT post (ImpWhile condB body (mInv, _)) = let
+  backwardPT post (ImpWhile condB body meta) = let
     cond          = bexpToAssertion condB
     varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
     vars          = Set.toList varSet
@@ -294,7 +312,7 @@ instance (CollectableNames e, BackwardPT e, ForwardPT e) => BackwardPT (ImpWhile
     freshen       = Name.substituteAll orig fresh
     qNames        = Set.toList $ namesInToInt fresh
     in do
-      inv <- case mInv of
+      inv <- case (iwm_invariant meta) of
                Just i  -> return i
                Nothing -> do
                  mInferredInv <- Pie.loopInvGen cond body post []

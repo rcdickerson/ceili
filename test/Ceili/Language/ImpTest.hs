@@ -99,8 +99,7 @@ test_evalImp_WhileFalse = let
   prog = (impWhile (BLt (AVar x) (ALit 10))
                    (impSeq [ impAsgn y (ALit 1)
                            , impAsgn x $ AAdd (AVar x) (ALit 1)
-                           ])
-                   (Nothing, Nothing)) :: ImpProgram
+                           ])) :: ImpProgram
   expected = mkSt [("x", 11), ("y", 0)]
   in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
@@ -109,13 +108,12 @@ test_evalImp_WhileLoop = let
   prog = (impWhile (BLt (AVar x) (ALit 10))
                    (impSeq [ impAsgn y (ALit 1)
                            , impAsgn x $ AAdd (AVar x) (ALit 1)
-                           ])
-                   (Nothing, Nothing)) :: ImpProgram
+                           ])) :: ImpProgram
   expected = mkSt [("x", 10), ("y", 1)]
   in assertEqual (Just expected) $ evalImp st prog InfiniteFuel
 
 test_evalImp_InfiniteLoopRunsOutOfFuel = let
-  prog = (impWhile BTrue impSkip (Nothing, Nothing)) :: ImpProgram
+  prog = (impWhile BTrue impSkip) :: ImpProgram
   in assertEqual Nothing $ evalImp Map.empty prog (Fuel 100)
 
 test_evalImp_slowMult = let
@@ -128,7 +126,6 @@ test_evalImp_slowMult = let
                             (impSeq [ impAsgn z $ AAdd (AVar z) (AVar y)
                                     , impAsgn c $ ASub (AVar c) (ALit 1)
                                     ])
-                   (Nothing, Nothing)
                  ]) :: ImpProgram
   expected = mkSt [("x", 5), ("y", 7), ("c", 0), ("z", 35)]
   in assertEqual (Just expected) $ evalImp st prog (Fuel 100)
