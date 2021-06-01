@@ -32,7 +32,7 @@ data LogLevel = LogLevelNone
               | LogLevelInfo
 
 defaultEnv :: Env
-defaultEnv = Env { logger_debug = LogNone
+defaultEnv = Env { logger_debug = LogNone -- LogStdout defaultBufSize
                  , logger_error = LogStderr defaultBufSize
                  , logger_info  = LogStdout defaultBufSize
                  , smtTimeoutMs = 2000 }

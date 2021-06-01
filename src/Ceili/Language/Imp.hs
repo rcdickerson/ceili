@@ -33,6 +33,7 @@ module Ceili.Language.Imp
   , impWhile
   , impWhileWithMeta
   , inject
+  , populateTestStates
   ) where
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
@@ -52,6 +53,8 @@ import qualified Ceili.Name as Name
 import Ceili.PTS.ForwardPT ( ForwardPT(..) )
 import Ceili.PTS.BackwardPT ( BackwardPT(..) )
 import Ceili.SMTString ( showSMT )
+import Data.List ( partition )
+import Data.Maybe ( catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -82,7 +85,7 @@ type Measure   = A.Arith
 data ImpWhileMetadata =
   ImpWhileMetadata { iwm_invariant  :: Maybe Invariant
                    , iwm_measure    :: Maybe Measure
-                   , iwm_testStates :: Maybe [Assertion]
+                   , iwm_testStates :: Maybe (Set Assertion)
                    } deriving (Eq, Ord, Show)
 
 emptyWhileMetadata :: ImpWhileMetadata
@@ -181,32 +184,32 @@ data Fuel = Fuel Int
           | InfiniteFuel
 
 class EvalImp f where
-  evalImp :: State -> f -> Fuel -> Maybe State
+  evalImp :: State -> Fuel -> f -> Maybe State
 
 instance (EvalImp (f e), EvalImp (g e)) => EvalImp ((f :+: g) e) where
-  evalImp st (Inl f) fuel = evalImp st f fuel
-  evalImp st (Inr g) fuel = evalImp st g fuel
+  evalImp st fuel (Inl f) = evalImp st fuel f
+  evalImp st fuel (Inr g) = evalImp st fuel g
 
 instance EvalImp (ImpSkip e) where
   evalImp st _ _ = Just st
 
 instance EvalImp (ImpAsgn e) where
-  evalImp st (ImpAsgn var aexp) _ = Just $ Map.insert var (evalAExp st aexp) st
+  evalImp st _ (ImpAsgn var aexp) = Just $ Map.insert var (evalAExp st aexp) st
 
 instance EvalImp e => EvalImp (ImpSeq e) where
-  evalImp st (ImpSeq stmts) fuel = case stmts of
+  evalImp st fuel (ImpSeq stmts) = case stmts of
     [] -> Just st
     (stmt:rest) -> do
-      st' <- evalImp st stmt fuel
-      evalImp st' (ImpSeq rest) fuel
+      st' <- evalImp st fuel stmt
+      evalImp st' fuel (ImpSeq rest)
 
 instance EvalImp e => EvalImp (ImpIf e) where
-  evalImp st (ImpIf c t f) fuel = if (evalBExp st c)
-                                  then (evalImp st t fuel)
-                                  else (evalImp st f fuel)
+  evalImp st fuel (ImpIf c t f) = if (evalBExp st c)
+                                  then (evalImp st fuel t)
+                                  else (evalImp st fuel f)
 
 instance EvalImp e => EvalImp (ImpWhile e) where
-  evalImp st (ImpWhile cond body im) fuel =
+  evalImp st fuel (ImpWhile cond body meta) =
     case (evalBExp st cond) of
       False -> Just st
       True  -> case fuel of
@@ -215,11 +218,11 @@ instance EvalImp e => EvalImp (ImpWhile e) where
         _              -> Nothing
     where
       step fuel' = do
-        st' <- evalImp st body fuel'
-        evalImp st' (ImpWhile cond body im) fuel'
+        st' <- evalImp st fuel' body
+        evalImp st' fuel' (ImpWhile cond body meta)
 
 instance EvalImp ImpProgram where
-  evalImp st (In program) fuel = evalImp st program fuel
+  evalImp st fuel (In program) = evalImp st fuel program
 
 
 -------------------------------------------
@@ -314,20 +317,76 @@ instance (CollectableNames e, BackwardPT e, ForwardPT e) => BackwardPT (ImpWhile
     in do
       inv <- case (iwm_invariant meta) of
                Just i  -> return i
-               Nothing -> do
-                 mInferredInv <- Pie.loopInvGen cond body post []
-                 case mInferredInv of
-                   Just inv -> return inv
-                   Nothing  -> Env.throwError "Unable to infer loop invariant."
+               Nothing -> case (iwm_testStates meta) of
+                 Nothing -> Env.throwError
+                   "No test states for while loop, did you run populateTestStates?"
+                 Just testStates -> do
+                   let tests = Set.toList testStates
+                   mInferredInv <- Pie.loopInvGen cond body post Set.empty tests
+                   case mInferredInv of
+                     Just inv -> return inv
+                     Nothing  -> Env.throwError "Unable to infer loop invariant."
       bodyWP <- backwardPT inv body
       let loopWP = A.Forall qNames
                    (freshen $ A.Imp (A.And [cond, inv]) bodyWP)
       let endWP  = A.Forall qNames
-                   (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
+                    (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
       return $ A.And [inv, loopWP, endWP]
 
 instance BackwardPT ImpProgram where
   backwardPT post (In f) = backwardPT post f
+
+
+-----------------
+-- Test States --
+-----------------
+
+class EvalImp f => PopulateTestStates f where
+  populateTestStates :: [State] -> Fuel -> f -> f
+
+instance PopulateTestStates (ImpSkip e) where
+  populateTestStates _ _ skip = skip
+
+instance PopulateTestStates (ImpAsgn e) where
+  populateTestStates _ _ asgn = asgn
+
+instance PopulateTestStates e => PopulateTestStates (ImpSeq e) where
+  populateTestStates sts fuel (ImpSeq stmts) =
+    case stmts of
+      [] -> ImpSeq stmts
+      stmt:rest ->
+        let
+          stmt' = populateTestStates sts fuel stmt
+          sts' = catMaybes $ map (\st -> evalImp st fuel stmt) sts
+          ImpSeq rest' = populateTestStates sts' fuel (ImpSeq rest)
+        in ImpSeq $ stmt':rest'
+
+instance PopulateTestStates e => PopulateTestStates (ImpIf e) where
+  populateTestStates sts fuel (ImpIf c t f) =
+    let (tStates, fStates) = partition (\st -> evalBExp st c) sts
+    in ImpIf c (populateTestStates tStates fuel t)
+               (populateTestStates fStates fuel f)
+
+instance PopulateTestStates e => PopulateTestStates (ImpWhile e) where
+  populateTestStates sts fuel (ImpWhile cond body meta) =
+    let
+      ImpWhileMetadata inv meas tests = meta
+      (trueSts, _) = partition (\st -> evalBExp st cond) sts
+      body'        = populateTestStates trueSts fuel body
+      -- Convert states to assertions.
+      toEq (k, v)  = A.Eq (A.Var $ TypedName k Int) (A.Num v)
+      toAssert st  = A.And $ map toEq (Map.toList st)
+      newTests     = Set.fromList $ map toAssert sts
+      tests'       = Just $ Set.union newTests (fromMaybe Set.empty tests)
+    in ImpWhile cond body' $ ImpWhileMetadata inv meas tests'
+
+instance (PopulateTestStates (f e), PopulateTestStates (g e)) =>
+         PopulateTestStates ((f :+: g) e) where
+  populateTestStates st fuel (Inl f) = Inl $ populateTestStates st fuel f
+  populateTestStates st fuel (Inr f) = Inr $ populateTestStates st fuel f
+
+instance PopulateTestStates ImpProgram where
+  populateTestStates sts fuel (In f) = In $ populateTestStates sts fuel f
 
 
 -------------

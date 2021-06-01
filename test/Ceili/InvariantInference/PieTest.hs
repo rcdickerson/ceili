@@ -237,7 +237,7 @@ test_featureLearn = let
   badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
                               , Eq (Var x) (Num $ -5) ]
   expected  = Lt (Num 0) (Var x)
-  in runAndAssertEquivalent expected $ featureLearn names lits 1 goodTests badTests
+  in runAndAssertEquivalent expected $ featureLearn names lits 1 Set.empty goodTests badTests
 
 
 test_pie = let
@@ -249,7 +249,7 @@ test_pie = let
   badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
                               , Eq (Var x) (Num $ -5) ]
   expected  = Lt (Num 0) (Var x)
-  in runAndAssertEquivalent expected $ pie names lits Vector.empty goodTests badTests
+  in runAndAssertEquivalent expected $ pie names lits Vector.empty Set.empty goodTests badTests
 
 --
 -- NB: Full LoopInvGen tests are expensive and are thus located in the verification-test suite.

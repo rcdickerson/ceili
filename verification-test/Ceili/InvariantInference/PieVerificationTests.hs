@@ -11,6 +11,7 @@ import Ceili.Language.BExp ( bexpToAssertion )
 import Ceili.Language.Imp
 import Ceili.Name
 import qualified Ceili.SMT as SMT
+import qualified Data.Set as Set
 import System.Log.FastLogger
 
 assertEquivalent :: Assertion -> Assertion -> IO ()
@@ -62,4 +63,4 @@ test_loopInvGen = let
           ]
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
-  in runAndAssertEquivalent expected $ loopInvGen (bexpToAssertion cond) body post tests
+  in runAndAssertEquivalent expected $ loopInvGen (bexpToAssertion cond) body post Set.empty tests

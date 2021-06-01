@@ -155,6 +155,9 @@ instance MappableNames a => MappableNames (Maybe a) where
 instance MappableNames a => MappableNames [a] where
   mapNames f as = map (mapNames f) as
 
+instance (MappableNames a, Ord a) => MappableNames (Set a) where
+  mapNames f as = Set.map (mapNames f) as
+
 instance (MappableNames (f e), MappableNames (g e)) => MappableNames ((f :+: g) e) where
   mapNames func (Inl f) = Inl $ mapNames func f
   mapNames func (Inr g) = Inr $ mapNames func g
