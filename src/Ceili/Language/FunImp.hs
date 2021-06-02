@@ -23,6 +23,7 @@ import Ceili.Name ( CollectableNames(..)
                   , Handle
                   , MappableNames(..)
                   , Name(..) )
+import Ceili.PTS ( BackwardPT(..), ForwardPT(..) )
 import Data.Map ( Map )
 import qualified Data.Set as Set
 

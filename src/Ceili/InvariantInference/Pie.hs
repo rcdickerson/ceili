@@ -20,8 +20,7 @@ import Ceili.Assertion
 import Ceili.CeiliEnv
 import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Name
-import Ceili.PTS.BackwardPT
-import Ceili.PTS.ForwardPT
+import Ceili.PTS ( BackwardPT(..), ForwardPT(..) )
 import Ceili.SMTString ( showSMT )
 import Control.Monad ( filterM )
 import Data.Maybe ( isJust )

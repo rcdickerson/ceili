@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 999b0b698ed213f532d17578d8ade5f15719cdc955394c8f3faaeb62a9dc36df
+-- hash: 6a512e8b3bbfc2bfe8ccb554b4240db73e1cb62d52056bd4fd2a15e73025f162
 
 name:           ceili
 version:        0.1.0.0
@@ -45,8 +45,7 @@ library
       Ceili.Language.Imp
       Ceili.Language.ImpParser
       Ceili.Name
-      Ceili.PTS.BackwardPT
-      Ceili.PTS.ForwardPT
+      Ceili.PTS
       Ceili.SMT
       Ceili.SMTString
   other-modules:
