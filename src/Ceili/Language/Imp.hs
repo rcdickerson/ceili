@@ -322,7 +322,7 @@ instance (CollectableNames e, BackwardPT e, ForwardPT e) => BackwardPT (ImpWhile
                    "No test states for while loop, did you run populateTestStates?"
                  Just testStates -> do
                    let tests = Set.toList testStates
-                   mInferredInv <- Pie.loopInvGen cond body post Set.empty tests
+                   mInferredInv <- Pie.loopInvGen cond body post tests
                    case mInferredInv of
                      Just inv -> return inv
                      Nothing  -> Env.throwError "Unable to infer loop invariant."

@@ -63,16 +63,27 @@ loopInvGen :: (CollectableNames p, BackwardPT p, ForwardPT p) =>
               Assertion
            -> p
            -> Assertion
-           -> Set Assertion
            -> [Test]
            -> Ceili (Maybe Assertion)
-loopInvGen cond body post denylist goodTests = do
+loopInvGen cond body post goodTests = do
   log_i $ "[PIE] Beginning invariant learning"
   let testNames = Set.unions $ map namesInToInt goodTests
       names     = Set.union (namesInToInt body) testNames
       lits      = Set.empty -- TODO: Lits
+  loopInvGen' names lits cond body post Set.empty goodTests
+
+loopInvGen' :: (BackwardPT p, ForwardPT p) =>
+               Set TypedName
+            -> Set Integer
+            -> Assertion
+            -> p
+            -> Assertion
+            -> Set Assertion
+            -> [Test]
+            -> Ceili (Maybe Assertion)
+loopInvGen' names lits cond body post denylist goodTests = do
   log_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
-  mInvar <- vPreGen testNames
+  mInvar <- vPreGen names
                     lits
                     (Imp (Not cond) post)
                     denylist
@@ -93,7 +104,7 @@ loopInvGen cond body post denylist goodTests = do
                  (return . not) =<< (checkValid $ Imp sp a)
            nonInductiveConjs <- conjunctsMeeting nonInductive invar
            let denylist' = Set.union denylist $ Set.fromList nonInductiveConjs
-           loopInvGen cond body post denylist' goodTests
+           loopInvGen' names lits cond body post denylist' goodTests
          Just invar' -> do
            log_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
            log_i $ "[PIE] Attempting to weaken invariant..."

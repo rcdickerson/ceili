@@ -63,4 +63,4 @@ test_loopInvGen = let
           ]
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
-  in runAndAssertEquivalent expected $ loopInvGen (bexpToAssertion cond) body post Set.empty tests
+  in runAndAssertEquivalent expected $ loopInvGen (bexpToAssertion cond) body post tests
