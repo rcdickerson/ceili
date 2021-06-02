@@ -8,6 +8,7 @@
 module Ceili.Language.Imp
   ( AExp(..)
   , BExp(..)
+  , EvalImp(..)
   , Fuel(..)
   , ImpAsgn(..)
   , ImpBackwardPT(..)
@@ -24,7 +25,6 @@ module Ceili.Language.Imp
   , Name(..)
   , State
   , emptyWhileMetadata
-  , evalImp
   , impAsgn
   , impIf
   , impSeq
