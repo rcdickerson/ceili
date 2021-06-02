@@ -20,7 +20,7 @@ import Ceili.Assertion
 import Ceili.CeiliEnv
 import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Name
-import Ceili.PTS ( BackwardPT(..), ForwardPT(..) )
+import Ceili.PTS ( BackwardPT, ForwardPT )
 import Ceili.SMTString ( showSMT )
 import Control.Monad ( filterM )
 import Data.Maybe ( isJust )
@@ -58,21 +58,24 @@ type Test = Assertion -- TODO: Allow other kinds of tests.
 -- LoopInvGen --
 ----------------
 
-loopInvGen :: (CollectableNames p, BackwardPT p, ForwardPT p) =>
-              Assertion
+loopInvGen :: (CollectableNames p) =>
+              BackwardPT p
+           -> ForwardPT p
+           -> Assertion
            -> p
            -> Assertion
            -> [Test]
            -> Ceili (Maybe Assertion)
-loopInvGen cond body post goodTests = do
+loopInvGen backwardPT forwardPT cond body post goodTests = do
   log_i $ "[PIE] Beginning invariant learning"
   let testNames = Set.unions $ map namesInToInt goodTests
       names     = Set.union (namesInToInt body) testNames
       lits      = Set.empty -- TODO: Lits
-  loopInvGen' names lits cond body post Set.empty goodTests
+  loopInvGen' backwardPT forwardPT names lits cond body post Set.empty goodTests
 
-loopInvGen' :: (BackwardPT p, ForwardPT p) =>
-               Set TypedName
+loopInvGen' :: BackwardPT p
+            -> ForwardPT p
+            -> Set TypedName
             -> Set Integer
             -> Assertion
             -> p
@@ -80,7 +83,7 @@ loopInvGen' :: (BackwardPT p, ForwardPT p) =>
             -> Set Assertion
             -> [Test]
             -> Ceili (Maybe Assertion)
-loopInvGen' names lits cond body post denylist goodTests = do
+loopInvGen' backwardPT forwardPT names lits cond body post denylist goodTests = do
   log_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
   mInvar <- vPreGen names
                     lits
@@ -93,22 +96,22 @@ loopInvGen' names lits cond body post denylist goodTests = do
     Nothing -> log_i "[PIE] Unable to find initial candidate invariant"
                >> return Nothing
     Just invar -> do
-      mInvar' <- makeInductive names lits cond body invar denylist goodTests
+      mInvar' <- makeInductive backwardPT forwardPT names lits cond body invar denylist goodTests
       case mInvar' of
          Nothing -> do
            log_i "[PIE] LoopInvGen unable to find inductive strengthening, backtracking"
            -- On every pass, filter out the non-inductive candidate clauses.
            let nonInductive a = do
-                 sp <- forwardPT a body
+                 sp <- forwardPT body a
                  (return . not) =<< (checkValid $ Imp sp a)
            nonInductiveConjs <- conjunctsMeeting nonInductive invar
            let denylist' = Set.union denylist $ Set.fromList nonInductiveConjs
-           loopInvGen' names lits cond body post denylist' goodTests
+           loopInvGen' backwardPT forwardPT names lits cond body post denylist' goodTests
          Just invar' -> do
            log_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
            log_i $ "[PIE] Attempting to weaken invariant..."
            let validInvar inv = do
-                 sp <- forwardPT (And [cond, inv]) body
+                 sp <- forwardPT body (And [cond, inv])
                  checkValid $ And [ Imp (And [Not cond, inv]) post
                                   , Imp sp inv ]
            weakenedInvar <- weaken validInvar invar'
@@ -130,8 +133,9 @@ loopInvGen' names lits cond body post denylist goodTests = do
       --            ++ (showSMT counter)
       --      loopInvGen cond body post (counter:goodTests)
 
-makeInductive :: (BackwardPT p, ForwardPT p) =>
-                 Set TypedName
+makeInductive :: BackwardPT p
+              -> ForwardPT p
+              -> Set TypedName
               -> Set Integer
               -> Assertion
               -> p
@@ -139,14 +143,14 @@ makeInductive :: (BackwardPT p, ForwardPT p) =>
               -> Set Assertion
               -> [Test]
               -> Ceili (Maybe Assertion)
-makeInductive names lits cond body invar denylist goodTests = do
-  sp <- forwardPT (And [invar, cond]) body
+makeInductive backwardPT forwardPT names lits cond body invar denylist goodTests = do
+  sp <- forwardPT body (And [invar, cond])
   inductive <- checkValid $ Imp sp invar
   case inductive of
     True -> return $ Just invar
     False -> do
       log_i $ "[PIE] LoopInvGen invariant not inductive, attempting to strengthen..."
-      inductiveWP <- backwardPT invar body
+      inductiveWP <- backwardPT body invar
       mInvar' <- vPreGen names
                          lits
                          (Imp (And [invar, cond]) inductiveWP)
@@ -155,7 +159,15 @@ makeInductive names lits cond body invar denylist goodTests = do
                          Vector.empty
       case mInvar' of
         Nothing -> return Nothing
-        Just invar' -> makeInductive names lits cond body (And [invar, invar']) denylist goodTests
+        Just invar' -> makeInductive backwardPT
+                                     forwardPT
+                                     names
+                                     lits
+                                     cond
+                                     body
+                                     (And [invar, invar'])
+                                     denylist
+                                     goodTests
 
 conjunctsMeeting :: (Assertion -> Ceili Bool) -> Assertion -> Ceili [Assertion]
 conjunctsMeeting check assertion = filterM check $ conjuncts assertion

@@ -10,7 +10,9 @@ module Ceili.Language.Imp
   , BExp(..)
   , Fuel(..)
   , ImpAsgn(..)
+  , ImpBackwardPT(..)
   , ImpExpr(..)
+  , ImpForwardPT(..)
   , ImpIf(..)
   , ImpProgram
   , ImpSeq(..)
@@ -21,10 +23,8 @@ module Ceili.Language.Imp
   , Measure
   , Name(..)
   , State
-  , backwardPT
   , emptyWhileMetadata
   , evalImp
-  , forwardPT
   , impAsgn
   , impIf
   , impSeq
@@ -38,7 +38,7 @@ module Ceili.Language.Imp
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
-import qualified Ceili.CeiliEnv as Env
+import Ceili.CeiliEnv
 import qualified Ceili.InvariantInference.Houdini as Houdini
 import qualified Ceili.InvariantInference.Pie as Pie
 import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
@@ -50,7 +50,6 @@ import Ceili.Name ( CollectableNames(..)
                   , TypedName(..)
                   , Type(..) )
 import qualified Ceili.Name as Name
-import Ceili.PTS ( BackwardPT(..), ForwardPT(..) )
 import Ceili.SMTString ( showSMT )
 import Data.List ( partition )
 import Data.Maybe ( catMaybes, fromMaybe )
@@ -224,118 +223,6 @@ instance EvalImp ImpProgram where
   evalImp st fuel (In program) = evalImp st fuel program
 
 
--------------------------------------------
--- Forward Predicate Transform (Partial) --
--------------------------------------------
-
-instance ForwardPT (ImpSkip e) where
-  forwardPT pre ImpSkip = return pre
-
-instance ForwardPT (ImpAsgn e) where
-  forwardPT pre (ImpAsgn lhs rhs) = let
-    names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
-    (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
-    subPre    = Name.substitute lhs lhs' pre
-    rhsArith  = aexpToArith rhs
-    ilhs      = TypedName lhs  Name.Int
-    ilhs'     = TypedName lhs' Name.Int
-    subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
-    in return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
-
-instance ForwardPT e => ForwardPT (ImpSeq e) where
-  forwardPT pre (ImpSeq stmts) = case stmts of
-    []     -> return pre
-    (s:ss) -> do
-      pre' <- forwardPT pre s
-      forwardPT pre' (ImpSeq ss)
-
-instance ForwardPT e => ForwardPT (ImpIf e) where
-  forwardPT pre (ImpIf b s1 s2) = do
-    let cond = bexpToAssertion b
-    postS1 <- forwardPT (A.And [pre, cond]) s1
-    postS2 <- forwardPT (A.And [pre, A.Not cond]) s2
-    return $ A.Or [postS1, postS2]
-
-instance (CollectableNames e, ForwardPT e) => ForwardPT (ImpWhile e) where
-  forwardPT pre (ImpWhile b body meta) = do
-    let cond = bexpToAssertion b
-    let bodySP pre' = forwardPT pre' body
-    inv <- case (iwm_invariant meta) of
-      Nothing  -> Houdini.infer (namesInToInt body) Set.empty 2 pre bodySP -- TODO: Lits
-      Just inv -> return inv
-    bodyInvSP <- bodySP inv
-    Env.log_d "Checking loop invariant verification conditions..."
-    vcCheck <- Env.checkValid $ A.And [ A.Imp pre inv, A.Imp bodyInvSP inv ]
-    if vcCheck
-      then do Env.log_d "Loop invariant verification conditions passed."
-              return $ A.And [A.Not cond, inv]
-      else Env.throwError
-           $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
-
-instance ForwardPT ImpProgram where
-  forwardPT pre (In f) = forwardPT pre f
-
-
---------------------------------------------
--- Backward Predicate Transform (Partial) --
---------------------------------------------
-
-instance BackwardPT (ImpSkip e) where
-  backwardPT post ImpSkip = return post
-
-instance BackwardPT (ImpAsgn e) where
-  backwardPT post (ImpAsgn lhs rhs) =
-    return $ A.subArith (TypedName lhs Name.Int)
-                        (aexpToArith rhs)
-                        post
-
-instance BackwardPT e => BackwardPT (ImpSeq e) where
-  backwardPT post (ImpSeq stmts) = case stmts of
-    [] -> return post
-    (s:ss) -> do
-      post' <- backwardPT post (ImpSeq ss)
-      backwardPT post' s
-
-instance BackwardPT e => BackwardPT (ImpIf e) where
-  backwardPT post (ImpIf condB tBranch eBranch) = do
-    wpT <- backwardPT post tBranch
-    wpE <- backwardPT post eBranch
-    let cond   = bexpToAssertion condB
-        ncond  = A.Not $ cond
-    return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
-
-instance (CollectableNames e, BackwardPT e, ForwardPT e) => BackwardPT (ImpWhile e) where
-  backwardPT post (ImpWhile condB body meta) = let
-    cond          = bexpToAssertion condB
-    varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
-    vars          = Set.toList varSet
-    freshMapping  = fst $ Name.freshNames vars $ Name.buildNextFreshIds vars
-    (orig, fresh) = unzip $ Map.toList freshMapping
-    freshen       = Name.substituteAll orig fresh
-    qNames        = Set.toList $ namesInToInt fresh
-    in do
-      inv <- case (iwm_invariant meta) of
-               Just i  -> return i
-               Nothing -> case (iwm_testStates meta) of
-                 Nothing -> Env.throwError
-                   "No test states for while loop, did you run populateTestStates?"
-                 Just testStates -> do
-                   let tests = Set.toList testStates
-                   mInferredInv <- Pie.loopInvGen cond body post tests
-                   case mInferredInv of
-                     Just inv -> return inv
-                     Nothing  -> Env.throwError "Unable to infer loop invariant."
-      bodyWP <- backwardPT inv body
-      let loopWP = A.Forall qNames
-                   (freshen $ A.Imp (A.And [cond, inv]) bodyWP)
-      let endWP  = A.Forall qNames
-                    (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
-      return $ A.And [inv, loopWP, endWP]
-
-instance BackwardPT ImpProgram where
-  backwardPT post (In f) = backwardPT post f
-
-
 -----------------
 -- Test States --
 -----------------
@@ -386,6 +273,134 @@ instance (PopulateTestStates (f e), PopulateTestStates (g e)) =>
 
 instance PopulateTestStates ImpProgram where
   populateTestStates sts fuel (In f) = In $ populateTestStates sts fuel f
+
+
+--------------------------------------------
+-- Backward Predicate Transform (Partial) --
+--------------------------------------------
+
+class ImpBackwardPT e where
+  impBackwardPT :: e -> Assertion -> Ceili Assertion
+
+instance ImpBackwardPT (ImpSkip e) where
+  impBackwardPT ImpSkip post = return post
+
+instance ImpBackwardPT (ImpAsgn e) where
+  impBackwardPT (ImpAsgn lhs rhs) post =
+    return $ A.subArith (TypedName lhs Name.Int)
+                        (aexpToArith rhs)
+                        post
+
+instance ImpBackwardPT e => ImpBackwardPT (ImpSeq e) where
+  impBackwardPT (ImpSeq stmts) post =
+    case stmts of
+      [] -> return post
+      (s:ss) -> do
+        post' <- impBackwardPT (ImpSeq ss) post
+        impBackwardPT s post'
+
+instance ImpBackwardPT e => ImpBackwardPT (ImpIf e) where
+  impBackwardPT (ImpIf condB tBranch eBranch) post = do
+    wpT <- impBackwardPT tBranch post
+    wpE <- impBackwardPT eBranch post
+    let cond   = bexpToAssertion condB
+        ncond  = A.Not $ cond
+    return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
+
+instance (CollectableNames e, ImpBackwardPT e, ImpForwardPT e) => ImpBackwardPT (ImpWhile e) where
+  impBackwardPT (ImpWhile condB body meta) post = let
+    cond          = bexpToAssertion condB
+    varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
+    vars          = Set.toList varSet
+    freshMapping  = fst $ Name.freshNames vars $ Name.buildNextFreshIds vars
+    (orig, fresh) = unzip $ Map.toList freshMapping
+    freshen       = Name.substituteAll orig fresh
+    qNames        = Set.toList $ namesInToInt fresh
+    in do
+      inv <- case (iwm_invariant meta) of
+               Just i  -> return i
+               Nothing -> case (iwm_testStates meta) of
+                 Nothing -> throwError
+                   "No test states for while loop, did you run populateTestStates?"
+                 Just testStates -> do
+                   let tests = Set.toList testStates
+                   mInferredInv <- Pie.loopInvGen impBackwardPT impForwardPT cond body post tests
+                   case mInferredInv of
+                     Just inv -> return inv
+                     Nothing  -> throwError "Unable to infer loop invariant."
+      bodyWP <- impBackwardPT body inv
+      let loopWP = A.Forall qNames
+                   (freshen $ A.Imp (A.And [cond, inv]) bodyWP)
+      let endWP  = A.Forall qNames
+                    (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
+      return $ A.And [inv, loopWP, endWP]
+
+instance (ImpBackwardPT (f e), ImpBackwardPT (g e)) =>
+         ImpBackwardPT ((f :+: g) e) where
+  impBackwardPT (Inl f) post = impBackwardPT f post
+  impBackwardPT (Inr f) post = impBackwardPT f post
+
+instance ImpBackwardPT ImpProgram where
+  impBackwardPT (In f) post = impBackwardPT f post
+
+
+-------------------------------------------
+-- Forward Predicate Transform (Partial) --
+-------------------------------------------
+
+class ImpForwardPT e where
+  impForwardPT :: e -> Assertion -> Ceili Assertion
+
+instance ImpForwardPT (ImpSkip e) where
+  impForwardPT ImpSkip pre = return pre
+
+instance ImpForwardPT (ImpAsgn e) where
+  impForwardPT (ImpAsgn lhs rhs) pre = let
+    names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
+    (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
+    subPre    = Name.substitute lhs lhs' pre
+    rhsArith  = aexpToArith rhs
+    ilhs      = TypedName lhs  Name.Int
+    ilhs'     = TypedName lhs' Name.Int
+    subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
+    in return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
+
+instance ImpForwardPT e => ImpForwardPT (ImpSeq e) where
+  impForwardPT (ImpSeq stmts) pre = case stmts of
+    []     -> return pre
+    (s:ss) -> do
+      pre' <- impForwardPT s pre
+      impForwardPT (ImpSeq ss) pre'
+
+instance ImpForwardPT e => ImpForwardPT (ImpIf e) where
+  impForwardPT (ImpIf b s1 s2) pre = do
+    let cond = bexpToAssertion b
+    postS1 <- impForwardPT s1 (A.And [pre, cond])
+    postS2 <- impForwardPT s2 (A.And [pre, A.Not cond])
+    return $ A.Or [postS1, postS2]
+
+instance (CollectableNames e, ImpForwardPT e) => ImpForwardPT (ImpWhile e) where
+  impForwardPT (ImpWhile b body meta) pre = do
+    let cond = bexpToAssertion b
+    inv <- case (iwm_invariant meta) of
+      Nothing  -> Houdini.infer (namesInToInt body) Set.empty 2 pre (impForwardPT body) -- TODO: Lits
+      Just inv -> return inv
+    bodyInvSP <- impForwardPT body inv
+    log_d "Checking loop invariant verification conditions..."
+    vcCheck <- checkValid $ A.And [ A.Imp pre inv, A.Imp bodyInvSP inv ]
+    if vcCheck
+      then do log_d "Loop invariant verification conditions passed."
+              return $ A.And [A.Not cond, inv]
+      else throwError
+           $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
+
+instance (ImpForwardPT (f e), ImpForwardPT (g e)) =>
+         ImpForwardPT ((f :+: g) e) where
+  impForwardPT (Inl f) pre = impForwardPT f pre
+  impForwardPT (Inr f) pre = impForwardPT f pre
+
+instance ImpForwardPT ImpProgram where
+  impForwardPT (In f) pre = impForwardPT f pre
 
 
 -------------

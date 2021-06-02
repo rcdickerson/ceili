@@ -65,7 +65,7 @@ mkTestStartStates cnames =
 test_forwardInferInv1Valid = do
   let post = Eq varX varY
   prog <- readAndParse "inferInv1.imp"
-  assertRunsWithoutErrors (forwardPT ATrue prog) $
+  assertRunsWithoutErrors (impForwardPT prog ATrue) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult ExpectSuccess smtResult
@@ -73,7 +73,7 @@ test_forwardInferInv1Valid = do
 test_forwardInferInv1Invalid = do
   let post = Not $ Eq varX varY
   prog <- readAndParse "inferInv1.imp"
-  assertRunsWithoutErrors (forwardPT ATrue prog) $
+  assertRunsWithoutErrors (impForwardPT prog ATrue) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult ExpectFailure smtResult
@@ -84,7 +84,7 @@ test_backwardInferInv1Valid = do
   let progWithTests = populateTestStates (mkTestStartStates prog)
                                          (Fuel 1000)
                                          prog
-  assertRunsWithoutErrors (backwardPT post progWithTests) $
+  assertRunsWithoutErrors (impBackwardPT progWithTests post) $
     \result -> do
       smtResult <- SMT.checkValid result
       assertSMTResult ExpectSuccess smtResult
@@ -95,4 +95,4 @@ test_backwardInferInv1Invalid = do
   let progWithTests = populateTestStates (mkTestStartStates prog)
                                          (Fuel 1000)
                                          prog
-  assertRunsWithError (backwardPT post progWithTests) "Unable to infer loop invariant."
+  assertRunsWithError (impBackwardPT progWithTests post) "Unable to infer loop invariant."
