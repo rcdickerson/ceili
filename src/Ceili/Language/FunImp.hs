@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
@@ -21,7 +21,7 @@ import Ceili.CeiliEnv
 import Ceili.Language.AExp
 import Ceili.Language.BExp
 import Ceili.Language.Compose
-import qualified Ceili.Language.Imp as Imp
+import Ceili.Language.Imp
 import Ceili.Name ( CollectableNames(..)
                   , Handle
                   , MappableNames(..) )
@@ -56,7 +56,7 @@ instance MappableNames FunImpl where
 
 type CallId = String
 
-data FunImpCall e = FunImpCall CallId [Imp.AExp] [Name]
+data FunImpCall e = FunImpCall CallId [AExp] [Name]
                 deriving (Eq, Ord, Show, Functor)
 
 instance CollectableNames (FunImpCall e) where
@@ -72,21 +72,21 @@ instance MappableNames (FunImpCall e) where
 -- FunImp Language --
 ---------------------
 
-type FunImpProgram = Imp.ImpExpr ( FunImpCall
-                               :+: Imp.ImpSkip
-                               :+: Imp.ImpAsgn
-                               :+: Imp.ImpSeq
-                               :+: Imp.ImpIf
-                               :+: Imp.ImpWhile )
+type FunImpProgram = ImpExpr ( FunImpCall
+                           :+: ImpSkip
+                           :+: ImpAsgn
+                           :+: ImpSeq
+                           :+: ImpIf
+                           :+: ImpWhile )
 
 instance CollectableNames FunImpProgram where
-  namesIn (Imp.In f) = namesIn f
+  namesIn (In f) = namesIn f
 
 instance MappableNames FunImpProgram where
-  mapNames func (Imp.In f) = Imp.In $ mapNames func f
+  mapNames func (In f) = In $ mapNames func f
 
-impCall :: (FunImpCall :<: f) => CallId -> [Imp.AExp] -> [Name] -> Imp.ImpExpr f
-impCall cid args assignees = Imp.inject $ FunImpCall cid args assignees
+impCall :: (FunImpCall :<: f) => CallId -> [AExp] -> [Name] -> ImpExpr f
+impCall cid args assignees = inject $ FunImpCall cid args assignees
 
 
 -----------------
@@ -95,58 +95,22 @@ impCall cid args assignees = Imp.inject $ FunImpCall cid args assignees
 
 type FunImplEnv = Map Handle FunImpl
 
--- Interpreter is very similar to Imp's, but has to thread through a function
--- implementation context.
--- TODO: Might be worthwhile to abstract interpreters over some context object?
+data FunEvalCtx = FunEvalCtx { fiec_fuel  :: Fuel
+                             , fiec_impls :: FunImplEnv
+                             }
 
-class EvalFunImp f where
-  evalFunImp :: FunImplEnv -> State -> Imp.Fuel -> f -> Ceili (Maybe State)
+instance FuelTank FunEvalCtx where
+  getFuel = fiec_fuel
+  setFuel (FunEvalCtx _ impls) fuel = FunEvalCtx fuel impls
 
-instance EvalFunImp (Imp.ImpSkip e) where
-  evalFunImp _ st fuel e = return $ Imp.evalImp st fuel e
-
-instance EvalFunImp (Imp.ImpAsgn e) where
-  evalFunImp _ st fuel e = return $ Imp.evalImp st fuel e
-
-instance EvalFunImp e => EvalFunImp (Imp.ImpSeq e) where
-  evalFunImp impls st fuel (Imp.ImpSeq stmts) =
-    case stmts of
-      [] -> return $ Just st
-      (stmt:rest) -> do
-        mSt' <- evalFunImp impls st fuel stmt
-        case mSt' of
-          Nothing -> return Nothing
-          Just st' -> evalFunImp impls st' fuel (Imp.ImpSeq rest)
-
-instance EvalFunImp e => EvalFunImp (Imp.ImpIf e) where
-  evalFunImp impls st fuel (Imp.ImpIf c t f) =
-    if (evalBExp st c)
-    then (evalFunImp impls st fuel t)
-    else (evalFunImp impls st fuel f)
-
-instance EvalFunImp e => EvalFunImp (Imp.ImpWhile e) where
-  evalFunImp impls st fuel (Imp.ImpWhile cond body meta) =
-    case (evalBExp st cond) of
-      False -> return $ Just st
-      True  -> case fuel of
-        Imp.InfiniteFuel   -> step Imp.InfiniteFuel
-        Imp.Fuel n | n > 0 -> step $ Imp.Fuel (n - 1)
-        _                  -> do log_e $ "Ran out of fuel"
-                                 return Nothing
-    where
-      step fuel' = do
-        mSt' <- evalFunImp impls st fuel' body
-        case mSt' of
-          Nothing  -> return Nothing
-          Just st' -> evalFunImp impls st' fuel' (Imp.ImpWhile cond body meta)
-
-instance EvalFunImp (FunImpCall e) where
-  evalFunImp impls st fuel (FunImpCall cid args assignees) =
-    case Map.lookup cid impls of
+instance EvalImp FunEvalCtx (FunImpCall e) where
+  evalImp ctx st (FunImpCall cid args assignees) =
+    let impls = fiec_impls ctx
+    in case Map.lookup cid impls of
       Just (FunImpl params body returns) -> do
         let eargs = map (evalAExp st) args
         let inputSt = Map.fromList $ zip params eargs
-        result <- evalFunImp impls inputSt fuel body
+        result <- evalImp ctx inputSt body
         return $ case result of
           Nothing -> Nothing
           Just outputSt -> let
@@ -157,9 +121,5 @@ instance EvalFunImp (FunImpCall e) where
         log_e $ "No implementation for " ++ cid
         return Nothing
 
-instance (EvalFunImp (f e), EvalFunImp (g e)) => EvalFunImp ((f :+: g) e) where
-  evalFunImp impls st fuel (Inl f) = evalFunImp impls st fuel f
-  evalFunImp impls st fuel (Inr g) = evalFunImp impls st fuel g
-
-instance EvalFunImp FunImpProgram where
-  evalFunImp impls st fuel (Imp.In f) = evalFunImp impls st fuel f
+instance EvalImp FunEvalCtx FunImpProgram where
+  evalImp ctx st (In f) = evalImp ctx st f

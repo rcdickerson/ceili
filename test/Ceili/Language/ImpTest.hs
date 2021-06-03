@@ -26,6 +26,13 @@ assertion assertionStr = case parseAssertion assertionStr of
   Left err        -> error $ "Bad assertion string: " ++ show err
   Right assertion -> assertion
 
+runAndAssertEqual :: (Eq t, Show t) => t -> Ceili t -> IO ()
+runAndAssertEqual expected task = do
+  result <- runCeili defaultEnv task
+  case result of
+    Left err     -> assertFailure err
+    Right actual -> assertEqual expected actual
+
 test_forwardPT = do
   let expected = assertion
         "(or \
@@ -61,13 +68,13 @@ test_mapNames = do
 
 test_evalImp_Skip = let
   st = mkSt [("x", 1), ("y", 2)]
-  in assertEqual (Just st) $ evalImp st InfiniteFuel (impSkip :: ImpProgram)
+  in runAndAssertEqual (Just st) $ evalImp InfiniteFuel st (impSkip :: ImpProgram)
 
 test_evalImp_Asgn = let
   st = mkSt [("x", 1), ("y", 2)]
   prog = (impAsgn x $ AAdd (AVar y) (ALit 3)) :: ImpProgram
   expected = mkSt [("x", 5), ("y", 2)]
-  in assertEqual (Just expected) $ evalImp st InfiniteFuel prog
+  in runAndAssertEqual (Just expected) $ evalImp InfiniteFuel st prog
 
 test_evalImp_Seq = let
   st = mkSt [("x", 1), ("y", 2)]
@@ -76,7 +83,7 @@ test_evalImp_Seq = let
                  , impAsgn x $ ASub (AVar y) (ALit 5)
                  ]) :: ImpProgram
   expected = mkSt [("x", 2), ("y", 7)]
-  in assertEqual (Just expected) $ evalImp st InfiniteFuel prog
+  in runAndAssertEqual (Just expected) $ evalImp InfiniteFuel st prog
 
 test_evalImp_IfTrue = let
   st = mkSt [("x", 1), ("y", -1)]
@@ -84,7 +91,7 @@ test_evalImp_IfTrue = let
                 (impAsgn y $ ALit 1)
                 (impAsgn y $ ALit 0)) :: ImpProgram
   expected = mkSt [("x", 1), ("y", 1)]
-  in assertEqual (Just expected) $ evalImp st InfiniteFuel prog
+  in runAndAssertEqual (Just expected) $ evalImp InfiniteFuel st prog
 
 test_evalImp_IfFalse = let
   st = mkSt [("x", 1), ("y", -1)]
@@ -92,7 +99,7 @@ test_evalImp_IfFalse = let
                 (impAsgn y $ ALit 1)
                 (impAsgn y $ ALit 0)) :: ImpProgram
   expected = mkSt [("x", 1), ("y", 0)]
-  in assertEqual (Just expected) $ evalImp st InfiniteFuel prog
+  in runAndAssertEqual (Just expected) $ evalImp InfiniteFuel st prog
 
 test_evalImp_WhileFalse = let
   st = mkSt [("x", 11), ("y", 0)]
@@ -101,7 +108,7 @@ test_evalImp_WhileFalse = let
                            , impAsgn x $ AAdd (AVar x) (ALit 1)
                            ])) :: ImpProgram
   expected = mkSt [("x", 11), ("y", 0)]
-  in assertEqual (Just expected) $ evalImp st InfiniteFuel prog
+  in runAndAssertEqual (Just expected) $ evalImp InfiniteFuel st prog
 
 test_evalImp_WhileLoop = let
   st = mkSt [("x", 0), ("y", 0)]
@@ -110,11 +117,11 @@ test_evalImp_WhileLoop = let
                            , impAsgn x $ AAdd (AVar x) (ALit 1)
                            ])) :: ImpProgram
   expected = mkSt [("x", 10), ("y", 1)]
-  in assertEqual (Just expected) $ evalImp st InfiniteFuel prog
+  in runAndAssertEqual (Just expected) $ evalImp InfiniteFuel st prog
 
 test_evalImp_InfiniteLoopRunsOutOfFuel = let
   prog = (impWhile BTrue impSkip) :: ImpProgram
-  in assertEqual Nothing $ evalImp Map.empty (Fuel 100) prog
+  in runAndAssertEqual Nothing $ evalImp (Fuel 100) Map.empty prog
 
 test_evalImp_slowMult = let
   st = mkSt [("x", 5), ("y", 7)]
@@ -128,4 +135,4 @@ test_evalImp_slowMult = let
                                     ])
                  ]) :: ImpProgram
   expected = mkSt [("x", 5), ("y", 7), ("c", 0), ("z", 35)]
-  in assertEqual (Just expected) $ evalImp st (Fuel 100) prog
+  in runAndAssertEqual (Just expected) $ evalImp (Fuel 100) st prog

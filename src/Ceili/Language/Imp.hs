@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -10,6 +11,7 @@ module Ceili.Language.Imp
   , BExp(..)
   , EvalImp(..)
   , Fuel(..)
+  , FuelTank(..)
   , ImpAsgn(..)
   , ImpBackwardPT(..)
   , ImpExpr(..)
@@ -181,45 +183,64 @@ instance MappableNames ImpProgram
 data Fuel = Fuel Int
           | InfiniteFuel
 
-class EvalImp f where
-  evalImp :: State -> Fuel -> f -> Maybe State
+class FuelTank t where
+  getFuel :: t -> Fuel
+  setFuel :: t -> Fuel -> t
 
-instance (EvalImp (f e), EvalImp (g e)) => EvalImp ((f :+: g) e) where
-  evalImp st fuel (Inl f) = evalImp st fuel f
-  evalImp st fuel (Inr g) = evalImp st fuel g
+instance FuelTank Fuel where
+  getFuel   = id
+  setFuel _ = id
 
-instance EvalImp (ImpSkip e) where
-  evalImp st _ _ = Just st
+decrementFuel :: (FuelTank f) => f -> f
+decrementFuel fuel =
+  case getFuel fuel of
+    Fuel n | n > 0 -> setFuel fuel $ Fuel (n - 1)
+    _ -> fuel
 
-instance EvalImp (ImpAsgn e) where
-  evalImp st _ (ImpAsgn var aexp) = Just $ Map.insert var (evalAExp st aexp) st
+class EvalImp c f where
+  evalImp :: c -> State -> f -> Ceili (Maybe State)
 
-instance EvalImp e => EvalImp (ImpSeq e) where
-  evalImp st fuel (ImpSeq stmts) = case stmts of
-    [] -> Just st
-    (stmt:rest) -> do
-      st' <- evalImp st fuel stmt
-      evalImp st' fuel (ImpSeq rest)
+instance (EvalImp c (f e), EvalImp c (g e)) => EvalImp c ((f :+: g) e) where
+  evalImp c st (Inl f) = evalImp c st f
+  evalImp c st (Inr g) = evalImp c st g
 
-instance EvalImp e => EvalImp (ImpIf e) where
-  evalImp st fuel (ImpIf c t f) = if (evalBExp st c)
-                                  then (evalImp st fuel t)
-                                  else (evalImp st fuel f)
+instance EvalImp c (ImpSkip e) where
+  evalImp c st _ = return $ Just st
 
-instance EvalImp e => EvalImp (ImpWhile e) where
-  evalImp st fuel (ImpWhile cond body meta) =
+instance EvalImp c (ImpAsgn e) where
+  evalImp _ st (ImpAsgn var aexp) = return $ Just $ Map.insert var (evalAExp st aexp) st
+
+instance EvalImp c e => EvalImp c (ImpSeq e) where
+  evalImp ctx st (ImpSeq stmts) =
+    case stmts of
+      [] -> return $ Just st
+      (stmt:rest) -> do
+        mSt' <- evalImp ctx st stmt
+        case mSt' of
+          Nothing  -> return Nothing
+          Just st' -> evalImp ctx st' (ImpSeq rest)
+
+instance EvalImp c e => EvalImp c (ImpIf e) where
+  evalImp ctx st (ImpIf c t f) = if (evalBExp st c)
+                                 then (evalImp ctx st t)
+                                 else (evalImp ctx st f)
+
+instance (FuelTank f, EvalImp f e) => EvalImp f (ImpWhile e) where
+  evalImp fuel st (ImpWhile cond body meta) =
     case (evalBExp st cond) of
-      False -> Just st
-      True  -> case fuel of
-        InfiniteFuel   -> step InfiniteFuel
-        Fuel n | n > 0 -> step $ Fuel (n - 1)
-        _              -> Nothing
-    where
-      step fuel' = do
-        st' <- evalImp st fuel' body
-        evalImp st' fuel' (ImpWhile cond body meta)
+      False -> return $ Just st
+      True  ->
+        let fuel' = decrementFuel fuel
+        in case (getFuel fuel') of
+          Fuel n | n <= 0 -> do log_e "Evaluation ran out of fuel"
+                                return Nothing
+          _ -> do
+            mSt' <- evalImp fuel' st body
+            case mSt' of
+              Nothing  -> return Nothing
+              Just st' -> evalImp fuel' st' (ImpWhile cond body meta)
 
-instance EvalImp ImpProgram where
+instance (FuelTank f) => EvalImp f ImpProgram where
   evalImp st fuel (In program) = evalImp st fuel program
 
 
@@ -227,52 +248,54 @@ instance EvalImp ImpProgram where
 -- Test States --
 -----------------
 
-class EvalImp f => PopulateTestStates f where
-  populateTestStates :: [State] -> Fuel -> f -> f
+class EvalImp c f => PopulateTestStates c f where
+  populateTestStates :: c -> [State] -> f -> Ceili f
 
-instance PopulateTestStates (ImpSkip e) where
-  populateTestStates _ _ skip = skip
+instance PopulateTestStates c (ImpSkip e) where
+  populateTestStates _ _ skip = return skip
 
-instance PopulateTestStates (ImpAsgn e) where
-  populateTestStates _ _ asgn = asgn
+instance PopulateTestStates c (ImpAsgn e) where
+  populateTestStates _ _ asgn = return asgn
 
-instance PopulateTestStates e => PopulateTestStates (ImpSeq e) where
-  populateTestStates sts fuel (ImpSeq stmts) =
+instance PopulateTestStates c e => PopulateTestStates c (ImpSeq e) where
+  populateTestStates ctx sts (ImpSeq stmts) =
     case stmts of
-      [] -> ImpSeq stmts
-      stmt:rest ->
-        let
-          stmt' = populateTestStates sts fuel stmt
-          sts' = catMaybes $ map (\st -> evalImp st fuel stmt) sts
-          ImpSeq rest' = populateTestStates sts' fuel (ImpSeq rest)
-        in ImpSeq $ stmt':rest'
+      [] -> return $ ImpSeq stmts
+      stmt:rest -> do
+        stmt' <- populateTestStates ctx sts stmt
+        mSts' <- sequence $ map (\st -> evalImp ctx st stmt) sts
+        let sts' = catMaybes mSts'
+        ImpSeq rest' <- populateTestStates ctx sts' (ImpSeq rest)
+        return $ ImpSeq $ stmt':rest'
 
-instance PopulateTestStates e => PopulateTestStates (ImpIf e) where
-  populateTestStates sts fuel (ImpIf c t f) =
+instance PopulateTestStates c e => PopulateTestStates c (ImpIf e) where
+  populateTestStates ctx sts (ImpIf c t f) =
     let (tStates, fStates) = partition (\st -> evalBExp st c) sts
-    in ImpIf c (populateTestStates tStates fuel t)
-               (populateTestStates fStates fuel f)
+    in do
+      t' <- populateTestStates ctx tStates t
+      f' <- populateTestStates ctx fStates f
+      return $ ImpIf c t' f'
 
-instance PopulateTestStates e => PopulateTestStates (ImpWhile e) where
-  populateTestStates sts fuel (ImpWhile cond body meta) =
+instance PopulateTestStates Fuel e => PopulateTestStates Fuel (ImpWhile e) where
+  populateTestStates fuel sts (ImpWhile cond body meta) = do
+    let ImpWhileMetadata inv meas tests = meta
+    let (trueSts, _) = partition (\st -> evalBExp st cond) sts
+    body' <- populateTestStates fuel trueSts body
+    -- Convert states to assertions.
     let
-      ImpWhileMetadata inv meas tests = meta
-      (trueSts, _) = partition (\st -> evalBExp st cond) sts
-      body'        = populateTestStates trueSts fuel body
-      -- Convert states to assertions.
       toEq (k, v)  = A.Eq (A.Var $ TypedName k Int) (A.Num v)
       toAssert st  = A.And $ map toEq (Map.toList st)
       newTests     = Set.fromList $ map toAssert sts
       tests'       = Just $ Set.union newTests (fromMaybe Set.empty tests)
-    in ImpWhile cond body' $ ImpWhileMetadata inv meas tests'
+    return $ ImpWhile cond body' $ ImpWhileMetadata inv meas tests'
 
-instance (PopulateTestStates (f e), PopulateTestStates (g e)) =>
-         PopulateTestStates ((f :+: g) e) where
-  populateTestStates st fuel (Inl f) = Inl $ populateTestStates st fuel f
-  populateTestStates st fuel (Inr f) = Inr $ populateTestStates st fuel f
+instance (PopulateTestStates c (f e), PopulateTestStates c (g e)) =>
+         PopulateTestStates c ((f :+: g) e) where
+  populateTestStates ctx st (Inl f) = populateTestStates ctx st f >>= return . Inl
+  populateTestStates ctx st (Inr f) = populateTestStates ctx st f >>= return . Inr
 
-instance PopulateTestStates ImpProgram where
-  populateTestStates sts fuel (In f) = In $ populateTestStates sts fuel f
+instance PopulateTestStates Fuel ImpProgram where
+  populateTestStates fuel sts (In f) = populateTestStates fuel sts f >>= return . In
 
 
 --------------------------------------------
