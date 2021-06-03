@@ -65,7 +65,7 @@ mkTestStartStates cnames =
 test_forwardInferInv1Valid = do
   let post = Eq varX varY
   prog <- readAndParse "inferInv1.imp"
-  assertRunsWithoutErrors (impForwardPT prog ATrue) $
+  assertRunsWithoutErrors (impForwardPT () prog ATrue) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult ExpectSuccess smtResult
@@ -73,7 +73,7 @@ test_forwardInferInv1Valid = do
 test_forwardInferInv1Invalid = do
   let post = Not $ Eq varX varY
   prog <- readAndParse "inferInv1.imp"
-  assertRunsWithoutErrors (impForwardPT prog ATrue) $
+  assertRunsWithoutErrors (impForwardPT () prog ATrue) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult ExpectFailure smtResult
@@ -83,7 +83,7 @@ test_backwardInferInv1Valid = do
   prog <- readAndParse "inferInv1.imp"
   let findWP = do
         progWithTests <- populateTestStates (Fuel 1000) (mkTestStartStates prog) prog
-        impBackwardPT progWithTests post
+        impBackwardPT () progWithTests post
   assertRunsWithoutErrors findWP $
     \result -> do
       smtResult <- SMT.checkValid result
@@ -94,5 +94,5 @@ test_backwardInferInv1Invalid = do
   prog <- readAndParse "inferInv1.imp"
   let findWP = do
         progWithTests <- populateTestStates (Fuel 1000) (mkTestStartStates prog) prog
-        impBackwardPT progWithTests post
+        impBackwardPT () progWithTests post
   assertRunsWithError findWP "Unable to infer loop invariant."
