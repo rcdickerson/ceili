@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 16f69a0440d18fc1b209e4a29a9d216590c3c421197bff06bf5bd8fe405b00b4
+-- hash: 76323e3191cf5ed024e3915299de0444259add0fd6052a3e67ec0509363d4d59
 
 name:           ceili
 version:        0.1.0.0
@@ -107,6 +107,7 @@ test-suite ceili-verification-test
   type: exitcode-stdio-1.0
   main-is: VerificationTestMain.hs
   other-modules:
+      Ceili.FunImpVerificationTests
       Ceili.ImpVerificationTests
       Ceili.InvariantInference.PieVerificationTests
       Paths_ceili

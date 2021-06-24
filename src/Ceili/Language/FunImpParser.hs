@@ -66,12 +66,12 @@ funBody cid = do
           <|> (try $ parseAExp >>= return . return)
           <|> aexpTuple
   _ <- semi
-  let freshIds = Name.buildNextFreshIds $ namesIn (Imp.ImpSeq bodyStmts)
+  let freshIds = Name.buildFreshIds $ namesIn (Imp.ImpSeq bodyStmts)
       retVal   = Name (cid ++ "!retVal") 0
-      retNames = fst $ foldr (\_ (names, ids) ->
-                                 let (nextFresh, ids') = Name.nextFreshName retVal ids
-                                 in  (nextFresh:names, ids'))
-                       ([], freshIds)
+      retNames = snd $ foldr (\_ (ids, names) ->
+                                 let (ids', nextFresh) = Name.runFreshen ids retVal
+                                 in  (ids', nextFresh:names))
+                       (freshIds, [])
                        retExprs
       asgns    = map (uncurry Imp.impAsgn) $ zip retNames retExprs
       body     = bodyStmts ++ asgns

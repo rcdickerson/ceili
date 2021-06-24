@@ -16,36 +16,37 @@ y0 = Name "y" 0
 y1 = Name "y" 1
 z0 = Name "z" 0
 
-test_buildNextFreshIds = let
+test_buildFreshIds = let
   names = [ x0, x1, x5, y0, z0 ]
   expected = Map.fromList [ ("x", 6)
                           , ("y", 1)
                           , ("z", 1) ]
-  actual = buildNextFreshIds names
+  actual = buildFreshIds names
   in assertEqual expected actual
 
-test_buildNextFreshIdsEmpty = let
+test_buildFreshIdsEmpty = let
   names = [ ]
   expected = Map.empty
-  actual = buildNextFreshIds names
+  actual = buildFreshIds names
   in assertEqual expected actual
 
 test_freshen = let
-  names = [ x0, x1, x5, y0, z0 ]
   nextIds = Map.fromList [ ("x", 10)
                          , ("y", 10)
                          , ("z", 10) ]
-  expectedNames' = [ Name "x" 12
-                   , Name "x" 11
-                   , Name "x" 10
-                   , Name "y" 10
-                   , Name "z" 10 ]
+  names = [ x0, x1, x5, z0 ]
+
+  (actualNextIds', actualNames') = runFreshen nextIds names
+
   expectedNextIds' = Map.fromList [ ("x", 13)
-                                  , ("y", 11)
+                                  , ("y", 10)
                                   , ("z", 11) ]
-  (actualNames', actualNextIds') = freshen names nextIds
+  expectedNames' = [ Name "x" 10
+                   , Name "x" 11
+                   , Name "x" 12
+                   , Name "z" 10 ]
   in do
-    assertEqual expectedNames' actualNames'
+    assertEqual expectedNames'   actualNames'
     assertEqual expectedNextIds' actualNextIds'
 
 test_fromString = do

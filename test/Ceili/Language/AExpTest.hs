@@ -10,6 +10,23 @@ import qualified Data.Map as Map
 mkSt assocList = Map.fromList $ map (\(n,v) -> (Name n 0, v)) assocList
 name n = Name n 0
 
+test_freshen =
+  let
+    x0 = Name "x" 0
+    nextIds  = Map.fromList [("x", 1)]
+    aexp     = AMul (ADiv (AVar x0) (AVar x0))
+                    (ASub (AVar x0) (ALit 2))
+
+    (actualNextIds', actualAexp') = runFreshen nextIds aexp
+
+    x1 = Name "x" 1
+    expectedNextIds' = Map.fromList [("x", 2)]
+    expectedAexp'    = AMul (ADiv (AVar x1) (AVar x1))
+                       (ASub (AVar x1) (ALit 2))
+  in do
+    assertEqual expectedNextIds' actualNextIds'
+    assertEqual expectedAexp'    actualAexp'
+
 test_evalAExp_Lit = do
   assertEqual 0    $ evalAExp Map.empty (ALit 0)
   assertEqual 1    $ evalAExp Map.empty (ALit 1)

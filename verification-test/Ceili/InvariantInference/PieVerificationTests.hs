@@ -11,7 +11,6 @@ import Ceili.Language.BExp ( bexpToAssertion )
 import Ceili.Language.Imp
 import Ceili.Name
 import qualified Ceili.SMT as SMT
-import qualified Data.Set as Set
 import System.Log.FastLogger
 
 assertEquivalent :: Assertion -> Assertion -> IO ()

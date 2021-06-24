@@ -8,8 +8,7 @@ module Ceili.Language.BExp
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
-import Ceili.Name ( CollectableNames(..)
-                  , MappableNames(..) )
+import Ceili.Name
 import qualified Data.Set  as Set
 
 -------------------------
@@ -56,6 +55,20 @@ instance MappableNames BExp where
   mapNames f (BGe a1 a2)  = BGe (mapNames f a1) (mapNames f a2)
   mapNames f (BLt a1 a2)  = BLt (mapNames f a1) (mapNames f a2)
   mapNames f (BGt a1 a2)  = BGt (mapNames f a1) (mapNames f a2)
+
+instance FreshableNames BExp where
+  freshen bexp = case bexp of
+    BTrue  -> return BTrue
+    BFalse -> return BFalse
+    BNot b -> return . BNot =<< freshen b
+    BAnd b1 b2 -> freshenBinop BAnd b1 b2
+    BOr  b1 b2 -> freshenBinop BOr  b1 b2
+    BEq  a1 a2 -> freshenBinop BEq  a1 a2
+    BNe  a1 a2 -> freshenBinop BNe  a1 a2
+    BLe  a1 a2 -> freshenBinop BLe  a1 a2
+    BGe  a1 a2 -> freshenBinop BGe  a1 a2
+    BLt  a1 a2 -> freshenBinop BLt  a1 a2
+    BGt  a1 a2 -> freshenBinop BGt  a1 a2
 
 bexpToAssertion :: BExp -> Assertion
 bexpToAssertion bexp = case bexp of

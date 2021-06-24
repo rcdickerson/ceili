@@ -6,13 +6,11 @@ module Ceili.Assertion.AssertionLanguage
   , Name(..)
   , freeVars
   , subArith
+  , subAriths
   , toSMT
   ) where
 
-import Ceili.Name ( Name(..)
-                  , TypedName(..)
-                  , CollectableNames(..)
-                  , MappableNames(..) )
+import Ceili.Name
 import Ceili.SMTString ( SMTString(..) )
 import Data.ByteString ( ByteString )
 import qualified Data.ByteString.Char8 as S8
@@ -59,6 +57,17 @@ instance CollectableNames Arith where
     Mod a1 a2 -> Set.union (namesIn a1) (namesIn a2)
     Pow a1 a2 -> Set.union (namesIn a1) (namesIn a2)
 
+instance FreshableNames Arith where
+  freshen arith = case arith of
+    Num i     -> return $ Num i
+    Var tname -> return . Var =<< freshen tname
+    Add as    -> return . Add =<< freshen as
+    Sub as    -> return . Sub =<< freshen as
+    Mul as    -> return . Mul =<< freshen as
+    Div a1 a2 -> freshenBinop Div a1 a2
+    Mod a1 a2 -> freshenBinop Mod a1 a2
+    Pow a1 a2 -> freshenBinop Pow a1 a2
+
 instance SMTString Arith where
   toSMT arith = case arith of
     Num n -> S8.pack $ show n
@@ -93,37 +102,59 @@ data Assertion = ATrue
 
 instance MappableNames Assertion where
   mapNames f assertion = case assertion of
-    ATrue         -> ATrue
-    AFalse        -> AFalse
-    Atom tname    -> Atom $ mapNames f tname
-    Not a         -> Not  $ mapNames f a
-    And as        -> And  $ map (mapNames f) as
-    Or as         -> Or   $ map (mapNames f) as
-    Imp a1 a2     -> Imp (mapNames f a1) (mapNames f a2)
-    Eq a1 a2      -> Eq  (mapNames f a1) (mapNames f a2)
-    Lt a1 a2      -> Lt  (mapNames f a1) (mapNames f a2)
-    Gt a1 a2      -> Gt  (mapNames f a1) (mapNames f a2)
-    Lte a1 a2     -> Lte (mapNames f a1) (mapNames f a2)
-    Gte a1 a2     -> Gte (mapNames f a1) (mapNames f a2)
-    Forall vs a   -> Forall (map (mapNames f) vs) (mapNames f a)
-    Exists vs a   -> Exists (map (mapNames f) vs) (mapNames f a)
+    ATrue       -> ATrue
+    AFalse      -> AFalse
+    Atom tname  -> Atom $ mapNames f tname
+    Not a       -> Not  $ mapNames f a
+    And as      -> And  $ map (mapNames f) as
+    Or as       -> Or   $ map (mapNames f) as
+    Imp a1 a2   -> Imp (mapNames f a1) (mapNames f a2)
+    Eq a1 a2    -> Eq  (mapNames f a1) (mapNames f a2)
+    Lt a1 a2    -> Lt  (mapNames f a1) (mapNames f a2)
+    Gt a1 a2    -> Gt  (mapNames f a1) (mapNames f a2)
+    Lte a1 a2   -> Lte (mapNames f a1) (mapNames f a2)
+    Gte a1 a2   -> Gte (mapNames f a1) (mapNames f a2)
+    Forall vs a -> Forall (map (mapNames f) vs) (mapNames f a)
+    Exists vs a -> Exists (map (mapNames f) vs) (mapNames f a)
 
 instance CollectableNames Assertion where
   namesIn assertion = case assertion of
-    ATrue          -> Set.empty
-    AFalse         -> Set.empty
-    Atom tname     -> namesIn tname
-    Not a          -> namesIn a
-    And as         -> Set.unions $ map namesIn as
-    Or as          -> Set.unions $ map namesIn as
-    Imp a1 a2      -> Set.union (namesIn a1) (namesIn a2)
-    Eq a1 a2       -> Set.union (namesIn a1) (namesIn a2)
-    Lt a1 a2       -> Set.union (namesIn a1) (namesIn a2)
-    Gt a1 a2       -> Set.union (namesIn a1) (namesIn a2)
-    Lte a1 a2      -> Set.union (namesIn a1) (namesIn a2)
-    Gte a1 a2      -> Set.union (namesIn a1) (namesIn a2)
-    Forall vs a    -> Set.unions $ (namesIn a):(map namesIn vs)
-    Exists vs a    -> Set.unions $ (namesIn a):(map namesIn vs)
+    ATrue       -> Set.empty
+    AFalse      -> Set.empty
+    Atom tname  -> namesIn tname
+    Not a       -> namesIn a
+    And as      -> Set.unions $ map namesIn as
+    Or as       -> Set.unions $ map namesIn as
+    Imp a1 a2   -> Set.union (namesIn a1) (namesIn a2)
+    Eq a1 a2    -> Set.union (namesIn a1) (namesIn a2)
+    Lt a1 a2    -> Set.union (namesIn a1) (namesIn a2)
+    Gt a1 a2    -> Set.union (namesIn a1) (namesIn a2)
+    Lte a1 a2   -> Set.union (namesIn a1) (namesIn a2)
+    Gte a1 a2   -> Set.union (namesIn a1) (namesIn a2)
+    Forall vs a -> Set.unions $ (namesIn a):(map namesIn vs)
+    Exists vs a -> Set.unions $ (namesIn a):(map namesIn vs)
+
+instance FreshableNames Assertion where
+  freshen assertion = case assertion of
+    ATrue       -> return ATrue
+    AFalse      -> return AFalse
+    Atom tname  -> return . Atom =<< freshen tname
+    Not a       -> return . Not =<< freshen a
+    And as      -> return . And =<< freshen as
+    Or as       -> return . Or =<< freshen as
+    Imp a1 a2   -> freshenBinop Imp a1 a2
+    Eq a1 a2    -> freshenBinop Eq a1 a2
+    Lt a1 a2    -> freshenBinop Lt a1 a2
+    Gt a1 a2    -> freshenBinop Gt a1 a2
+    Lte a1 a2   -> freshenBinop Lte a1 a2
+    Gte a1 a2   -> freshenBinop Gte a1 a2
+    Forall vs a -> quant Forall vs a
+    Exists vs a -> quant Exists vs a
+    where
+      quant op vs a = do
+        vs' <- freshen vs
+        a'  <- freshen a
+        return $ op vs' a'
 
 instance SMTString Assertion where
   toSMT assertion = case assertion of
@@ -186,6 +217,9 @@ instance SubstitutableArith Assertion where
       Gte a1 a2     -> Gte (subArith from to a1) (subArith from to a2)
       Forall vars a -> Forall vars (sub a)
       Exists vars a -> Exists vars (sub a)
+
+subAriths :: SubstitutableArith a => [TypedName] -> [Arith] -> a -> a
+subAriths from to sa = foldr (uncurry subArith) sa $ zip from to
 
 
 --------------------

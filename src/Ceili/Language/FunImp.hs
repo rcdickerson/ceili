@@ -8,15 +8,16 @@
 module Ceili.Language.FunImp
   ( AExp(..)
   , BExp(..)
+  , Fuel(..)
   , FunImpl(..)
   , FunImpCall(..)
   , FunImplEnv
   , FunImpProgram
-  , FunSpec(..)
-  , FunSpecEnv
   , Name(..)
+  , impBackwardPT
   , impCall
-  , instantiateSpec
+  , impForwardPT
+  , populateTestStates
   ) where
 
 import Ceili.Assertion
@@ -50,40 +51,14 @@ instance MappableNames FunImpl where
   mapNames f (FunImpl params body returns) =
     FunImpl (map f params) (mapNames f body) (map f returns)
 
+instance FreshableNames FunImpl where
+  freshen (FunImpl params body returns) = do
+    params'  <- freshen params
+    body'    <- freshen body
+    returns' <- freshen returns
+    return $ FunImpl params' body' returns'
+
 type FunImplEnv = Map Handle FunImpl
-
-
------------------------------
--- Function Specifications --
------------------------------
-
-data FunSpec = FunSpec { fspec_params  :: [Name]
-                       , fspec_returns :: [Name]
-                       , fspec_pre     :: Assertion
-                       , fspec_post    :: Assertion
-                       }
-
-instantiateSpec :: FunSpec -> [Arith] -> [Name] -> (Assertion, Assertion)
-instantiateSpec (FunSpec params returns pre post) args assignees =
-  let
-    toInts  = map (\n -> TypedName n Int)
-    subParams  assertion = foldr (uncurry subArith) assertion $ zip (toInts params) args
-    subReturns assertion = foldr (uncurry substitute) assertion $ zip returns assignees
-    subAll = subReturns . subParams
-  in (subAll pre, subAll post)
-
-instance CollectableNames FunSpec where
-  namesIn (FunSpec params returns pre post) =
-    Set.unions [ Set.fromList params
-               , Set.fromList returns
-               , namesIn pre
-               , namesIn post ]
-
-instance MappableNames FunSpec where
-  mapNames f (FunSpec params returns pre post) =
-    FunSpec (map f params) (map f returns) (mapNames f pre) (mapNames f post)
-
-type FunSpecEnv = Map Handle FunSpec
 
 
 --------------------
@@ -98,6 +73,12 @@ data FunImpCall e = FunImpCall CallId [AExp] [Name]
 instance CollectableNames (FunImpCall e) where
   namesIn (FunImpCall _ args assignees) =
     Set.union (namesIn args) (namesIn assignees)
+
+instance FreshableNames (FunImpCall e) where
+  freshen (FunImpCall cid args assignees) = do
+    args'      <- freshen args
+    assignees' <- freshen assignees
+    return $ FunImpCall cid args' assignees'
 
 instance MappableNames (FunImpCall e) where
   mapNames f (FunImpCall cid args assignees) =
@@ -120,6 +101,9 @@ instance CollectableNames FunImpProgram where
 
 instance MappableNames FunImpProgram where
   mapNames func (In f) = In $ mapNames func f
+
+instance FreshableNames FunImpProgram where
+  freshen (In f) = return . In =<< freshen f
 
 impCall :: (FunImpCall :<: f) => CallId -> [AExp] -> [Name] -> ImpExpr f
 impCall cid args assignees = inject $ FunImpCall cid args assignees
@@ -170,31 +154,48 @@ instance PopulateTestStates FunEvalCtx FunImpProgram where
   populateTestStates ctx sts (In f) = populateTestStates ctx sts f >>= return . In
 
 
+-----------------
+-- PTS Context --
+-----------------
+
+data PTSContext = PTSContext
+  { ptsc_funImpls :: FunImplEnv
+  , ptsc_freshIds :: NextFreshIds
+  }
+
+
 ----------------------------------
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance ImpBackwardPT FunSpecEnv (FunImpCall e) where
-  impBackwardPT specs (FunImpCall cid args assignees) post =
-    case Map.lookup cid specs of
-      Nothing -> throwError $ "No specification for " ++ cid
-      Just (FunSpec params returns pre post) -> do
-        error ""
+instance ImpBackwardPT PTSContext (FunImpCall e) where
+  impBackwardPT (PTSContext impls freshIds)
+                (FunImpCall cid args assignees)
+                post =
+    case Map.lookup cid impls of
+      Nothing   -> throwError $ "No implementation for " ++ cid
+      Just impl -> do
+        let (nextIds', FunImpl params body returns) = runFreshen freshIds impl
+        -- Create predicate equating returns and assignees
+        -- wp <- impBackwardPT impls body -- pred /\ post
+        -- Create predicate equating args and params
+        -- return pred /\ wp
+        error "Unimplemeted"
 
-instance ImpBackwardPT FunSpecEnv FunImpProgram where
-  impBackwardPT specs (In f) post = impBackwardPT specs f post
+instance ImpBackwardPT PTSContext FunImpProgram where
+  impBackwardPT ctx (In f) post = impBackwardPT ctx f post
 
 
 ----------------------------------
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance ImpForwardPT FunSpecEnv (FunImpCall e) where
-  impForwardPT specs (FunImpCall cid args assignees) pre =
-    case Map.lookup cid specs of
+instance ImpForwardPT PTSContext (FunImpCall e) where
+  impForwardPT (PTSContext impls freshIds) (FunImpCall cid args assignees) pre =
+    case Map.lookup cid impls of
       Nothing -> throwError $ "No specification for " ++ cid
-      Just (FunSpec params returns pre post) -> do
-        error ""
+      Just spec -> do
+        error "unimplemented"
 
-instance ImpForwardPT FunSpecEnv FunImpProgram where
-  impForwardPT specs (In f) pre = impForwardPT specs f pre
+instance ImpForwardPT PTSContext FunImpProgram where
+  impForwardPT ctx (In f) pre = impForwardPT ctx f pre

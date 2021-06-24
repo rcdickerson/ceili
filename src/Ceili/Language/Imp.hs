@@ -47,10 +47,13 @@ import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
 import Ceili.Language.BExp ( BExp(..), bexpToAssertion, evalBExp )
 import Ceili.Language.Compose
 import Ceili.Name ( CollectableNames(..)
+                  , FreshableNames(..)
                   , MappableNames(..)
                   , Name(..)
                   , TypedName(..)
-                  , Type(..) )
+                  , Type(..)
+                  , freshen
+                  , runFreshen )
 import qualified Ceili.Name as Name
 import Ceili.SMTString ( showSMT )
 import Data.List ( partition )
@@ -98,6 +101,18 @@ instance MappableNames ImpWhileMetadata where
       mMeasure' = do measure <- mMeasure; return $ mapNames f measure
       mTests'   = do tests   <- mTests;   return $ mapNames f tests
     in ImpWhileMetadata mInvar' mMeasure' mTests'
+
+instance FreshableNames ImpWhileMetadata where
+  freshen (ImpWhileMetadata invar measure tests) = do
+    invar'   <- freshen invar
+    measure' <- freshen measure
+    tests'   <- case tests of
+                  Nothing -> return Nothing
+                  Just s  -> do
+                    let testList = Set.toList s
+                    testList' <- freshen testList
+                    return $ Just (Set.fromList testList')
+    return $ ImpWhileMetadata invar' measure' tests'
 
 data ImpWhile e = ImpWhile BExp e ImpWhileMetadata
   deriving (Eq, Ord, Show, Functor)
@@ -175,6 +190,32 @@ instance MappableNames e => MappableNames (ImpWhile e) where
 instance MappableNames ImpProgram
   where mapNames f (In p) = In $ mapNames f p
 
+
+instance FreshableNames (ImpSkip e) where
+  freshen ImpSkip = return ImpSkip
+
+instance FreshableNames (ImpAsgn e) where
+  freshen (ImpAsgn var aexp) = do
+    var'  <- freshen var
+    aexp' <- freshen aexp
+    return $ ImpAsgn var' aexp'
+
+instance FreshableNames e => FreshableNames (ImpSeq e) where
+  freshen (ImpSeq stmts) = return . ImpSeq =<< freshen stmts
+
+instance FreshableNames e => FreshableNames (ImpIf e) where
+  freshen (ImpIf c t e) = do
+    c' <- freshen c
+    t' <- freshen t
+    e' <- freshen e
+    return $ ImpIf c' t' e'
+
+instance FreshableNames e => FreshableNames (ImpWhile e) where
+  freshen (ImpWhile cond body meta) = do
+    cond' <- freshen cond
+    body' <- freshen body
+    meta' <- freshen meta
+    return $ ImpWhile cond' body' meta'
 
 -----------------
 -- Interpreter --
@@ -335,7 +376,7 @@ instance (CollectableNames e, ImpBackwardPT c e, ImpForwardPT c e) => ImpBackwar
     cond          = bexpToAssertion condB
     varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
     vars          = Set.toList varSet
-    freshMapping  = fst $ Name.freshNames vars $ Name.buildNextFreshIds vars
+    freshMapping  = snd $ Name.buildFreshMap (Name.buildFreshIds vars) vars
     (orig, fresh) = unzip $ Map.toList freshMapping
     freshen       = Name.substituteAll orig fresh
     qNames        = Set.toList $ namesInToInt fresh
@@ -380,7 +421,7 @@ instance ImpForwardPT c (ImpSkip e) where
 instance ImpForwardPT c (ImpAsgn e) where
   impForwardPT _ (ImpAsgn lhs rhs) pre = let
     names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
-    (lhs', _) = Name.nextFreshName lhs $ Name.buildNextFreshIds names
+    (_, lhs') = runFreshen (Name.buildFreshIds names) lhs
     subPre    = Name.substitute lhs lhs' pre
     rhsArith  = aexpToArith rhs
     ilhs      = TypedName lhs  Name.Int

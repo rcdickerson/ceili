@@ -6,11 +6,7 @@ module Ceili.Language.AExp
   ) where
 
 import qualified Ceili.Assertion.AssertionLanguage as A
-import Ceili.Name ( CollectableNames(..)
-                  , MappableNames(..)
-                  , Name(..)
-                  , TypedName(..) )
-import qualified Ceili.Name as Name
+import Ceili.Name
 import Data.Map ( Map )
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -38,19 +34,31 @@ instance CollectableNames AExp where
     APow lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
 
 instance MappableNames AExp where
-  mapNames _ (ALit i)       = ALit i
-  mapNames f (AVar v)       = AVar (f v)
-  mapNames f (AAdd lhs rhs) = AAdd (mapNames f lhs) (mapNames f rhs)
-  mapNames f (ASub lhs rhs) = ASub (mapNames f lhs) (mapNames f rhs)
-  mapNames f (AMul lhs rhs) = AMul (mapNames f lhs) (mapNames f rhs)
-  mapNames f (ADiv lhs rhs) = ADiv (mapNames f lhs) (mapNames f rhs)
-  mapNames f (AMod lhs rhs) = AMod (mapNames f lhs) (mapNames f rhs)
-  mapNames f (APow lhs rhs) = APow (mapNames f lhs) (mapNames f rhs)
+  mapNames f aexp = case aexp of
+    ALit i       -> ALit i
+    AVar v       -> AVar (f v)
+    AAdd lhs rhs -> AAdd (mapNames f lhs) (mapNames f rhs)
+    ASub lhs rhs -> ASub (mapNames f lhs) (mapNames f rhs)
+    AMul lhs rhs -> AMul (mapNames f lhs) (mapNames f rhs)
+    ADiv lhs rhs -> ADiv (mapNames f lhs) (mapNames f rhs)
+    AMod lhs rhs -> AMod (mapNames f lhs) (mapNames f rhs)
+    APow lhs rhs -> APow (mapNames f lhs) (mapNames f rhs)
+
+instance FreshableNames AExp where
+  freshen aexp = case aexp of
+    ALit i -> return $ ALit i
+    AVar v -> return . AVar =<< freshen v
+    AAdd lhs rhs -> freshenBinop AAdd lhs rhs
+    ASub lhs rhs -> freshenBinop ASub lhs rhs
+    AMul lhs rhs -> freshenBinop AMul lhs rhs
+    ADiv lhs rhs -> freshenBinop ADiv lhs rhs
+    AMod lhs rhs -> freshenBinop AMod lhs rhs
+    APow lhs rhs -> freshenBinop APow lhs rhs
 
 aexpToArith :: AExp -> A.Arith
 aexpToArith aexp = case aexp of
   ALit i           -> A.Num i
-  AVar var         -> A.Var (TypedName var Name.Int)
+  AVar var         -> A.Var (TypedName var Int)
   AAdd aexp1 aexp2 -> A.Add [aexpToArith aexp1, aexpToArith aexp2]
   ASub aexp1 aexp2 -> A.Sub [aexpToArith aexp1, aexpToArith aexp2]
   AMul aexp1 aexp2 -> A.Mul [aexpToArith aexp1, aexpToArith aexp2]

@@ -7,6 +7,7 @@ module Ceili.Assertion
   , parseArith
   , parseAssertion
   , subArith
+  , subAriths
   , toSMT
   ) where
 

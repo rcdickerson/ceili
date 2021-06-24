@@ -1,34 +1,39 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Ceili.Name
   ( CollectableNames(..)
+  , FreshableNames(..)
+  , Freshener
   , Handle
   , Id
   , MappableNames(..)
-  , NextFreshIds
   , Name(..)
+  , NextFreshIds
   , Type(..)
   , TypedName(..)
-  , buildNextFreshIds
-  , freshen
-  , freshNames
+  , buildFreshIds
+  , buildFreshMap
+  , freshenBinop
   , fromString
-  , nextFreshName
   , prefix
+  , runFreshen
   , substitute
   , substituteAll
   , substituteHandle
   , substituteAllHandles
+  , withType
   ) where
 
 import Ceili.Language.Compose
 import Ceili.SMTString ( SMTString(..) )
+import Control.Monad.State
 import qualified Data.ByteString.Char8 as S8
 import Data.List ( intercalate )
 import Data.List.Split ( splitOn )
-import Data.Map ( Map, (!) )
+import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Set ( Set )
 import qualified Data.Set as Set
@@ -50,6 +55,9 @@ instance CollectableNames Name where
 instance MappableNames Name where
   mapNames = ($)
 
+instance FreshableNames Name where
+  freshen = freshReplacement
+
 instance SMTString Name where
   toSMT (Name h 0) = S8.pack h
   toSMT (Name h i) = (S8.pack h) <> "!" <> (S8.pack $ show i)
@@ -66,6 +74,11 @@ fromString str = case splitOn "!" str of
 
 prefix :: MappableNames a => String -> a -> a
 prefix pre a = mapNames (liftHandleMap $ (++) pre) a
+
+
+------------------
+-- Substitution --
+------------------
 
 substitute :: MappableNames a => Name -> Name -> a -> a
 substitute from to a = mapNames sub a
@@ -91,40 +104,93 @@ substituteAllHandles from to x = mapNames doSub x
                                 Nothing -> Name handle nid
                                 Just replacement -> Name replacement nid
 
+
+----------------
+-- Freshening --
+----------------
+
 type NextFreshIds = Map Handle Id
 
-buildNextFreshIds :: Foldable a => a Name -> NextFreshIds
-buildNextFreshIds names = Map.map (+1) maxMap
+class FreshableNames a where
+  freshen :: a -> Freshener a
+
+instance FreshableNames a => FreshableNames [a] where
+  freshen names = mapM freshen names
+
+instance FreshableNames a => FreshableNames (Maybe a) where
+  freshen ma = case ma of
+    Nothing -> return Nothing
+    Just a  -> return . Just =<< freshen a
+
+instance (FreshableNames (f e), FreshableNames (g e)) => FreshableNames ((f :+: g) e) where
+  freshen (Inl f) = return . Inl =<< freshen f
+  freshen (Inr g) = return . Inr =<< freshen g
+
+buildFreshIds :: Foldable a => a Name -> NextFreshIds
+buildFreshIds names = Map.map (+1) maxMap
   where
     maxMap = foldr newMax Map.empty names
     newMax (Name handle hid) maxes = case Map.lookup handle maxes of
       Nothing     -> Map.insert handle hid maxes
       Just curMax -> Map.insert handle (max curMax hid) maxes
 
-nextFreshId :: Handle -> NextFreshIds -> (Id, NextFreshIds)
-nextFreshId handle nextIds =
-  case Map.lookup handle nextIds of
-    Nothing   -> (0, Map.insert handle 1 nextIds)
-    Just next -> (next, Map.insert handle (next + 1) nextIds)
+-- Freshening with replacement tracking.
+data FreshMapping =
+  FreshMapping { fr_nextIds      :: NextFreshIds
+               , fr_replacements :: Map Name Name
+               }
 
-nextFreshName :: Name -> NextFreshIds -> (Name, NextFreshIds)
-nextFreshName (Name handle _) nextIds =
-  let (id', nextIds') = nextFreshId handle nextIds
-  in  (Name handle id', nextIds')
+type Freshener a = State FreshMapping a
 
-freshNames :: Foldable f => f Name -> NextFreshIds -> (Map Name Name, NextFreshIds)
-freshNames names nextFreshIds = foldr f (Map.empty, nextFreshIds) names
-  where f name (replacements, nextIds) =
-          case Map.lookup name replacements of
-            Just _     -> (replacements, nextIds)
-            Nothing    -> let (name', nextIds') = nextFreshName name nextIds
-                          in (Map.insert name name' replacements, nextIds')
+setNextId :: Handle -> Id -> Freshener ()
+setNextId handle id = do
+  FreshMapping nextIds replacements <- get
+  put $ FreshMapping (Map.insert handle id nextIds) replacements
 
-freshen :: Traversable t => t Name -> NextFreshIds -> (t Name, NextFreshIds)
-freshen names nextFreshIds =
-  (fmap (replacements!) names, nextIds')
-  where (replacements, nextIds') = freshNames names nextFreshIds
+advanceId :: Handle -> Freshener Id
+advanceId handle = do
+  mapping <- get
+  let id = case Map.lookup handle (fr_nextIds mapping) of
+             Nothing   -> 0
+             Just next -> next
+  setNextId handle (id + 1)
+  return id
 
+setReplacement :: Name -> Name -> Freshener ()
+setReplacement from to = do
+  FreshMapping nextIds replacements <- get
+  put $ FreshMapping nextIds (Map.insert from to replacements)
+
+freshReplacement :: Name -> Freshener Name
+freshReplacement name = do
+  mapping <- get
+  case Map.lookup name (fr_replacements mapping) of
+    Just r  -> return r
+    Nothing -> do
+      let handle = nHandle name
+      frId <- advanceId handle
+      let replacement = Name handle frId
+      setReplacement name replacement
+      return replacement
+
+freshenBinop :: FreshableNames a => (a -> a -> b) -> a -> a -> Freshener b
+freshenBinop op lhs rhs = do
+  lhs' <- freshen lhs
+  rhs' <- freshen rhs
+  return $ op lhs' rhs'
+
+runFreshen :: FreshableNames a => NextFreshIds -> a -> (NextFreshIds, a)
+runFreshen nextIds x =
+  let (x', mapping) = runState (freshen x) $ FreshMapping nextIds Map.empty
+  in (fr_nextIds mapping, x')
+
+buildFreshMap :: Traversable t =>  NextFreshIds -> t Name -> (NextFreshIds, Map Name Name)
+buildFreshMap nextIds names =
+  let
+    replacements  = mapM freshReplacement names
+    mapping       = FreshMapping nextIds Map.empty
+    (_, mapping') = runState replacements mapping
+  in (fr_nextIds mapping', fr_replacements mapping')
 
 -------------------
 -- Collect Names --
@@ -186,5 +252,13 @@ instance CollectableNames TypedName where
 instance MappableNames TypedName where
   mapNames f (TypedName name ty) = TypedName (f name) ty
 
+instance FreshableNames TypedName where
+  freshen (TypedName name ty) = do
+    name' <- freshen name
+    return $ TypedName name' ty
+
 instance SMTString TypedName where
   toSMT (TypedName name ty) = "(" <> toSMT name <> " " <> toSMT ty <> ")"
+
+withType :: Type -> [Name] -> [TypedName]
+withType typ = map (\n -> TypedName n typ)
