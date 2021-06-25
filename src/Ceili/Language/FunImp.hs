@@ -9,11 +9,14 @@ module Ceili.Language.FunImp
   ( AExp(..)
   , BExp(..)
   , Fuel(..)
+  , FunEvalContext(..)
   , FunImpl(..)
   , FunImpCall(..)
   , FunImplEnv
   , FunImpProgram
   , Name(..)
+  , PTSContext(..)
+  , State
   , impBackwardPT
   , impCall
   , impForwardPT
@@ -113,15 +116,15 @@ impCall cid args assignees = inject $ FunImpCall cid args assignees
 -- Interpreter --
 -----------------
 
-data FunEvalCtx = FunEvalCtx { fiec_fuel  :: Fuel
+data FunEvalContext = FunEvalContext { fiec_fuel  :: Fuel
                              , fiec_impls :: FunImplEnv
                              }
 
-instance FuelTank FunEvalCtx where
+instance FuelTank FunEvalContext where
   getFuel = fiec_fuel
-  setFuel (FunEvalCtx _ impls) fuel = FunEvalCtx fuel impls
+  setFuel (FunEvalContext _ impls) fuel = FunEvalContext fuel impls
 
-instance EvalImp FunEvalCtx (FunImpCall e) where
+instance EvalImp FunEvalContext (FunImpCall e) where
   evalImp ctx st (FunImpCall cid args assignees) =
     let impls = fiec_impls ctx
     in case Map.lookup cid impls of
@@ -139,7 +142,7 @@ instance EvalImp FunEvalCtx (FunImpCall e) where
             assignments = Map.fromList $ zip assignees retVals
             in Just $ Map.union assignments st
 
-instance EvalImp FunEvalCtx FunImpProgram where
+instance EvalImp FunEvalContext FunImpProgram where
   evalImp ctx st (In f) = evalImp ctx st f
 
 
@@ -147,10 +150,10 @@ instance EvalImp FunEvalCtx FunImpProgram where
 -- Test States --
 -----------------
 
-instance PopulateTestStates FunEvalCtx (FunImpCall e) where
+instance PopulateTestStates FunEvalContext (FunImpCall e) where
   populateTestStates _ _ = return . id
 
-instance PopulateTestStates FunEvalCtx FunImpProgram where
+instance PopulateTestStates FunEvalContext FunImpProgram where
   populateTestStates ctx sts (In f) = populateTestStates ctx sts f >>= return . In
 
 
@@ -193,8 +196,8 @@ instance ImpBackwardPT PTSContext FunImpProgram where
 instance ImpForwardPT PTSContext (FunImpCall e) where
   impForwardPT (PTSContext impls freshIds) (FunImpCall cid args assignees) pre =
     case Map.lookup cid impls of
-      Nothing -> throwError $ "No specification for " ++ cid
-      Just spec -> do
+      Nothing -> throwError $ "No implementation for " ++ cid
+      Just impl -> do
         error "unimplemented"
 
 instance ImpForwardPT PTSContext FunImpProgram where

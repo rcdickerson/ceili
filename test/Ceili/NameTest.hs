@@ -25,7 +25,7 @@ test_buildFreshIds = let
   in assertEqual expected actual
 
 test_buildFreshIdsEmpty = let
-  names = [ ]
+  names = [] :: [Name]
   expected = Map.empty
   actual = buildFreshIds names
   in assertEqual expected actual

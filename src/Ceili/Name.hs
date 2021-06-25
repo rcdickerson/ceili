@@ -126,10 +126,11 @@ instance (FreshableNames (f e), FreshableNames (g e)) => FreshableNames ((f :+: 
   freshen (Inl f) = return . Inl =<< freshen f
   freshen (Inr g) = return . Inr =<< freshen g
 
-buildFreshIds :: Foldable a => a Name -> NextFreshIds
+buildFreshIds :: (Foldable a, CollectableNames n) => a n -> NextFreshIds
 buildFreshIds names = Map.map (+1) maxMap
   where
-    maxMap = foldr newMax Map.empty names
+    allNames = foldMap namesIn names
+    maxMap = foldr newMax Map.empty $ Set.toList allNames
     newMax (Name handle hid) maxes = case Map.lookup handle maxes of
       Nothing     -> Map.insert handle hid maxes
       Just curMax -> Map.insert handle (max curMax hid) maxes
