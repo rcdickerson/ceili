@@ -92,7 +92,7 @@ test_backwardInferInv1Valid = do
   let findWP = do
         let evalCtx = FunEvalContext (Fuel 1000) funEnv
         progWithTests <- populateTestStates evalCtx (mkTestStartStates prog) prog
-        let ptsCtx = PTSContext Map.empty Map.empty
+        let ptsCtx = PTSContext funEnv freshIds
         impBackwardPT ptsCtx progWithTests post
   assertRunsWithoutErrors findWP $
     \result -> do
@@ -107,6 +107,6 @@ test_backwardInferInv1Invalid = do
   let findWP = do
         let evalCtx = FunEvalContext (Fuel 1000) funEnv
         progWithTests <- populateTestStates evalCtx (mkTestStartStates prog) prog
-        let ptsCtx = PTSContext Map.empty Map.empty
+        let ptsCtx = PTSContext funEnv freshIds
         impBackwardPT ptsCtx progWithTests post
   assertRunsWithError findWP "Unable to infer loop invariant."

@@ -19,7 +19,7 @@ bexpLanguageDef = Token.LanguageDef
   , Token.commentEnd      = "*/"
   , Token.commentLine     = "//"
   , Token.identStart      = letter <|> char '@'
-  , Token.identLetter     = alphaNum <|> char '_'
+  , Token.identLetter     = alphaNum <|> char '_' <|> char '!'
   , Token.nestedComments  = True
   , Token.opStart         = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , Token.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
