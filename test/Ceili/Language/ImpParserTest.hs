@@ -27,6 +27,11 @@ test_asgn = let
   expected = impAsgn (n "x") (ALit 5)
   in assertCorrectParse prog expected
 
+test_asgnWithIndex = let
+  prog = "x!5 := 5;"
+  expected = impAsgn (Name "x" 5) (ALit 5)
+  in assertCorrectParse prog expected
+
 test_seq = let
   prog = "x := 5; y := 10;"
   expected = impSeq [ impAsgn x (ALit 5)

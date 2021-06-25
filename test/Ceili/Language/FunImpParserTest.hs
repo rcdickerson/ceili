@@ -46,7 +46,7 @@ test_twoFuns = let
   in assertCorrectParse prog expected
 
 test_funCall = let
-  prog = "fun foo(x) { x := call foo(x); return x; }"
+  prog = "fun foo(x) { x := foo(x); return x; }"
   expected = Map.fromList
     [("foo", FunImpl{ fimpl_params = [x],
                       fimpl_body = impSeq [

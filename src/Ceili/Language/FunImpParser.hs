@@ -20,7 +20,7 @@ type ProgramParser = FunImpParser FunImpProgram
 funImpLanguageDef :: Token.LanguageDef a
 funImpLanguageDef = ImpParser.impLanguageDef {
     Token.reservedNames = Token.reservedNames ImpParser.impLanguageDef
-                       ++ ["fun", "return", "call"]
+                       ++ ["fun", "return"]
   }
 
 lexer      = Token.makeTokenParser funImpLanguageDef
@@ -45,8 +45,8 @@ program = do
 statement :: ProgramParser
 statement = parens statement
         <|> try funCall
-        <|> ImpParser.parseIf lexer
-        <|> ImpParser.parseWhile lexer
+        <|> ImpParser.parseIf lexer statement
+        <|> ImpParser.parseWhile lexer statement
         <|> ImpParser.parseSkip lexer
         <|> ImpParser.parseAsgn lexer
 
@@ -61,11 +61,7 @@ funDef = do
 funBody :: Name.Handle -> FunImpParser (FunImpProgram, [Name])
 funBody cid = do
   bodyStmts <- many statement
-  reserved "return"
-  retExprs <- (try varArray)
-          <|> (try $ parseAExp >>= return . return)
-          <|> aexpTuple
-  _ <- semi
+  retExprs  <- option [ALit 0] returnStatement
   let freshIds = Name.buildFreshIds $ namesIn (Imp.ImpSeq bodyStmts)
       retVal   = Name (cid ++ "!retVal") 0
       retNames = snd $ foldr (\_ (ids, names) ->
@@ -77,11 +73,18 @@ funBody cid = do
       body     = bodyStmts ++ asgns
   return (Imp.impSeq body, retNames)
 
+returnStatement :: FunImpParser [AExp]
+returnStatement = do
+  reserved "return"
+  retExprs <- try varArrayOrAExp
+          <|> aexpTuple
+  _ <- semi
+  return retExprs
+
 funCall :: ProgramParser
 funCall = do
-  assignees <- (try nameTuple) <|> nameArray
+  assignees <- (try nameTuple) <|> nameArrayOrName
   reservedOp ":="
-  reserved "call"
   funName <- identifier
   args    <- aexpTuple
   _ <- semi
@@ -89,21 +92,22 @@ funCall = do
 
 nameTuple :: FunImpParser [Name]
 nameTuple = do
-  names <- parens $ sepBy nameArray comma
+  names <- parens $ sepBy nameArrayOrName comma
   return $ concat names
 
 nameArray :: FunImpParser [Name]
 nameArray = do
-  (Name vname i, num) <- try (do
-                         var <- name
-                         char '[' >> whiteSpace
-                         num <- integer
-                         char ']' >> whiteSpace
-                         return (var, num))
-                     <|> (do var <- name; return (var, 0))
+  var <- name
+  char '[' >> whiteSpace
+  num <- integer
+  char ']' >> whiteSpace
   return $ case num of
-    0 -> [Name vname i]
-    _ -> map (\n -> Name (vname ++ "_" ++ (show n)) i) [0..(num-1)]
+    0 -> [ var ]
+    _ -> let (Name vname i) = var
+         in map (\n -> Name (vname ++ "_" ++ (show n)) i) [0..(num-1)]
+
+nameArrayOrName :: FunImpParser [Name]
+nameArrayOrName = (try nameArray) <|> (do n <- name; return [n])
 
 varArray :: FunImpParser [AExp]
 varArray = do
@@ -112,11 +116,11 @@ varArray = do
 
 aexpTuple :: FunImpParser [AExp]
 aexpTuple = do
-  args <- parens $ sepBy argument comma
+  args <- parens $ sepBy varArrayOrAExp comma
   return $ concat args
 
-argument :: FunImpParser [AExp]
-argument = varArray <|> (parseAExp >>= return . return)
+varArrayOrAExp :: FunImpParser [AExp]
+varArrayOrAExp = (try varArray) <|> (do aexp <- parseAExp; return [aexp])
 
 name :: FunImpParser Name
 name = identifier >>= (return . Name.fromString)

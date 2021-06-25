@@ -3,7 +3,8 @@ module Ceili.Language.AExpParser
   , parseAExp
   ) where
 
-import Ceili.Name ( Name(..), fromString )
+import Ceili.Name ( Name(..) )
+import qualified Ceili.Name as Name
 import Ceili.Language.AExp
 import Control.Monad ( liftM )
 import Text.Parsec
@@ -18,7 +19,7 @@ aexpLanguageDef = Token.LanguageDef
   , Token.commentEnd      = "*/"
   , Token.commentLine     = "//"
   , Token.identStart      = letter <|> char '@'
-  , Token.identLetter     = alphaNum <|> char '_'
+  , Token.identLetter     = alphaNum <|> char '_' <|> char '!'
   , Token.nestedComments  = True
   , Token.opStart         = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , Token.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
@@ -50,4 +51,4 @@ aTerm =  parens parseAExp
      <|> liftM ALit integer
 
 name :: AExpParser s Name
-name = identifier >>= (return . fromString)
+name = identifier >>= (return . Name.fromString)

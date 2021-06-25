@@ -30,7 +30,7 @@ impLanguageDef = Token.LanguageDef
   , Token.commentEnd      = "*/"
   , Token.commentLine     = "//"
   , Token.identStart      = letter <|> char '@'
-  , Token.identLetter     = alphaNum <|> char '_'
+  , Token.identLetter     = alphaNum <|> char '_' <|> char '!'
   , Token.nestedComments  = True
   , Token.opStart         = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , Token.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
@@ -63,8 +63,8 @@ type BasicImpProg f = ( ImpAsgn  :<: f
 
 statement :: BasicImpProg f => TokenParser s -> ImpParser s (ImpExpr f)
 statement lexer = (Token.parens lexer $ statement lexer)
-              <|> parseIf lexer
-              <|> parseWhile lexer
+              <|> parseIf lexer (statement lexer)
+              <|> parseWhile lexer (statement lexer)
               <|> parseSkip lexer
               <|> parseAsgn lexer
 
@@ -82,19 +82,19 @@ parseAsgn lexer = do
   _ <- Token.semi lexer
   return $ impAsgn var expr
 
-parseIf :: BasicImpProg f => TokenParser s -> ImpParser s (ImpExpr f)
-parseIf lexer = do
+parseIf :: BasicImpProg f => TokenParser s -> ImpParser s (ImpExpr f) -> ImpParser s (ImpExpr f)
+parseIf lexer stmtParser = do
   Token.reserved lexer "if"
   cond  <- parseBExp
   Token.reserved lexer "then"
-  tbranch <- many1 $ statement lexer
+  tbranch <- many1 $ stmtParser
   ebranch <- option [] $
     (Token.reserved lexer "else" >>= \_ -> many1 $ statement lexer)
   Token.reserved lexer "endif"
   return $ impIf cond (impSeqIfNeeded tbranch) (impSeqIfNeeded ebranch)
 
-parseWhile :: BasicImpProg f => TokenParser s -> ImpParser s (ImpExpr f)
-parseWhile lexer = do
+parseWhile :: BasicImpProg f => TokenParser s -> ImpParser s (ImpExpr f) -> ImpParser s (ImpExpr f)
+parseWhile lexer stmtParser = do
   Token.reserved lexer "while"
   cond  <- parseBExp
   Token.whiteSpace lexer
@@ -112,7 +112,7 @@ parseWhile lexer = do
       Left err  -> fail (show err)
       Right var -> return $ Just var
   Token.whiteSpace lexer
-  body  <- many1 $ try $ statement lexer
+  body  <- many1 $ try stmtParser
   Token.whiteSpace lexer
   Token.reserved lexer "end"
   let meta = ImpWhileMetadata inv var Nothing
