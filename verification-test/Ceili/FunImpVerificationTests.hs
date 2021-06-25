@@ -64,7 +64,7 @@ mkTestStartStates cnames =
 
 test_forwardInferInv1Valid = do
   let post = Eq varX varY
-  funEnv <- readAndParse "inferInv1.imp"
+  funEnv <- readAndParse "inferInv1.fimp"
   let prog = fimpl_body $ funEnv Map.! "main"
   let freshIds = buildFreshIds funEnv
   let ctx = PTSContext funEnv freshIds
@@ -75,7 +75,7 @@ test_forwardInferInv1Valid = do
 
 test_forwardInferInv1Invalid = do
   let post = Not $ Eq varX varY
-  funEnv <- readAndParse "inferInv1.imp"
+  funEnv <- readAndParse "inferInv1.fimp"
   let prog = fimpl_body $ funEnv Map.! "main"
   let freshIds = buildFreshIds funEnv
   let ctx = PTSContext funEnv freshIds
@@ -86,7 +86,7 @@ test_forwardInferInv1Invalid = do
 
 test_backwardInferInv1Valid = do
   let post = Eq varX varY
-  funEnv <- readAndParse "inferInv1.imp"
+  funEnv <- readAndParse "inferInv1.fimp"
   let prog = fimpl_body $ funEnv Map.! "main"
   let freshIds = buildFreshIds funEnv
   let findWP = do
@@ -101,7 +101,7 @@ test_backwardInferInv1Valid = do
 
 test_backwardInferInv1Invalid = do
   let post = Not $ Eq varX varY
-  funEnv <- readAndParse "inferInv1.imp"
+  funEnv <- readAndParse "inferInv1.fimp"
   let prog = fimpl_body $ funEnv Map.! "main"
   let freshIds = buildFreshIds funEnv
   let findWP = do
