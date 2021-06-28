@@ -25,14 +25,14 @@ assertSMTResult expected result =
       $ "Expected INVALID but was VALID"
     _ -> assertFailure "Unknown SMT result"
 
-assertRunsWithoutErrors task check = do
-  spOrErr <- runCeili defaultEnv $ task
+assertRunsWithoutErrors env task check = do
+  spOrErr <- runCeili env $ task
   case spOrErr of
     Left err     -> assertFailure $ show err
     Right result -> check result
 
-assertRunsWithError task expectedErr = do
-  spOrErr <- runCeili defaultEnv $ task
+assertRunsWithError env task expectedErr = do
+  spOrErr <- runCeili env $ task
   case spOrErr of
     Left err     -> assertEqual expectedErr err
     Right result -> assertFailure $ "Unexpected success: " ++ show result
@@ -49,10 +49,6 @@ readAndParse path = do
     Left  err    -> assertFailure $ "Parse error: " ++ (show err)
     Right funEnv -> return funEnv
 
-
-varX = Var $ TypedName (Name "x" 0) Int
-varY = Var $ TypedName (Name "y" 0) Int
-
 mkTestStartStates :: CollectableNames n => n -> [State]
 mkTestStartStates cnames =
   let names = Set.toList $ namesIn cnames
@@ -61,52 +57,37 @@ mkTestStartStates cnames =
      , Map.fromList $ map (\n -> (n, -1)) names
      ]
 
-
-test_forwardInferInv1Valid = do
-  let post = Eq varX varY
-  funEnv <- readAndParse "inferInv1.fimp"
+runForward expectedResult progFile pre post = do
+  funEnv <- readAndParse progFile
   let prog = fimpl_body $ funEnv Map.! "main"
-  let freshIds = buildFreshIds funEnv
-  let ctx = PTSContext funEnv freshIds
-  assertRunsWithoutErrors (impForwardPT ctx prog ATrue) $
+  assertRunsWithoutErrors (mkEnv prog) (impForwardPT funEnv prog pre) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
-      assertSMTResult ExpectSuccess smtResult
+      assertSMTResult expectedResult smtResult
 
-test_forwardInferInv1Invalid = do
-  let post = Not $ Eq varX varY
-  funEnv <- readAndParse "inferInv1.fimp"
+runBackward expectedResult progFile pre post = do
+  funEnv <- readAndParse progFile
   let prog = fimpl_body $ funEnv Map.! "main"
-  let freshIds = buildFreshIds funEnv
-  let ctx = PTSContext funEnv freshIds
-  assertRunsWithoutErrors (impForwardPT ctx prog ATrue) $
-    \result -> do
-      smtResult <- SMT.checkValid $ Imp result post
-      assertSMTResult ExpectFailure smtResult
-
-test_backwardInferInv1Valid = do
-  let post = Eq varX varY
-  funEnv <- readAndParse "inferInv1.fimp"
-  let prog = fimpl_body $ funEnv Map.! "main"
-  let freshIds = buildFreshIds funEnv
   let findWP = do
         let evalCtx = FunEvalContext (Fuel 1000) funEnv
         progWithTests <- populateTestStates evalCtx (mkTestStartStates prog) prog
-        let ptsCtx = PTSContext funEnv freshIds
-        impBackwardPT ptsCtx progWithTests post
-  assertRunsWithoutErrors findWP $
+        impBackwardPT funEnv progWithTests post
+  assertRunsWithoutErrors (mkEnv prog) findWP $
     \result -> do
-      smtResult <- SMT.checkValid result
-      assertSMTResult ExpectSuccess smtResult
+      smtResult <- SMT.checkValid $ Imp pre result
+      assertSMTResult expectedResult smtResult
 
-test_backwardInferInv1Invalid = do
-  let post = Not $ Eq varX varY
-  funEnv <- readAndParse "inferInv1.fimp"
-  let prog = fimpl_body $ funEnv Map.! "main"
-  let freshIds = buildFreshIds funEnv
-  let findWP = do
-        let evalCtx = FunEvalContext (Fuel 1000) funEnv
-        progWithTests <- populateTestStates evalCtx (mkTestStartStates prog) prog
-        let ptsCtx = PTSContext funEnv freshIds
-        impBackwardPT ptsCtx progWithTests post
-  assertRunsWithError findWP "Unable to infer loop invariant."
+
+varX = Var $ TypedName (Name "x" 0) Int
+varY = Var $ TypedName (Name "y" 0) Int
+
+
+test_forwardAddOne_valid        = runForward  ExpectSuccess "addOne.fimp" ATrue $ Eq varX (Num 1)
+test_forwardAddOne_invalid      = runForward  ExpectFailure "addOne.fimp" ATrue $ Eq varX (Num 0)
+test_backwardAddOne_valid       = runBackward ExpectSuccess "addOne.fimp" ATrue $ Eq varX (Num 1)
+test_backwardAddOne_invalid     = runBackward ExpectFailure "addOne.fimp" ATrue $ Eq varX (Num 0)
+
+test_forward_inferInv1_valid    = runForward  ExpectSuccess "inferInv1.fimp" ATrue $ Eq varX varY
+test_forward_inferInv1_invalid  = runForward  ExpectFailure "inferInv1.fimp" ATrue $ Not (Eq varX varY)
+test_backward_inferInv1_valid   = runBackward ExpectSuccess "inferInv1.fimp" ATrue $ Eq varX varY
+test_backward_inferInv1_invalid = runBackward ExpectFailure "inferInv1.fimp" ATrue $ Not (Eq varX varY)

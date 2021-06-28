@@ -23,9 +23,9 @@ assertEquivalent a1 a2 = do
     SMT.Invalid s    -> assertFailure s
     SMT.ValidUnknown -> assertFailure "Unable to establish equivalence."
 
-runAndAssertEquivalent :: Assertion -> Ceili (Maybe Assertion) -> IO ()
-runAndAssertEquivalent expected actual = do
-  result <- runCeili defaultEnv actual
+runAndAssertEquivalent :: Env -> Assertion -> Ceili (Maybe Assertion) -> IO ()
+runAndAssertEquivalent env expected actual = do
+  result <- runCeili env actual
   case result of
     Left err         -> assertFailure err
     Right mAssertion ->
@@ -62,4 +62,4 @@ test_loopInvGen = let
           ]
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
-  in runAndAssertEquivalent expected $ loopInvGen impBackwardPT impForwardPT () (bexpToAssertion cond) body post tests
+  in runAndAssertEquivalent (mkEnv body) expected $ loopInvGen impBackwardPT impForwardPT () (bexpToAssertion cond) body post tests

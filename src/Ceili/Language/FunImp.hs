@@ -15,7 +15,6 @@ module Ceili.Language.FunImp
   , FunImplEnv
   , FunImpProgram
   , Name(..)
-  , PTSContext(..)
   , State
   , impBackwardPT
   , impCall
@@ -30,6 +29,8 @@ import Ceili.Language.BExp
 import Ceili.Language.Compose
 import Ceili.Language.Imp
 import Ceili.Name
+import Ceili.SMTString
+import Control.Monad ( foldM )
 import Data.Map ( Map )
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -157,48 +158,55 @@ instance PopulateTestStates FunEvalContext FunImpProgram where
   populateTestStates ctx sts (In f) = populateTestStates ctx sts f >>= return . In
 
 
------------------
--- PTS Context --
------------------
-
-data PTSContext = PTSContext
-  { ptsc_funImpls :: FunImplEnv
-  , ptsc_freshIds :: NextFreshIds
-  }
-
-
 ----------------------------------
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance ImpBackwardPT PTSContext (FunImpCall e) where
-  impBackwardPT (PTSContext impls freshIds)
-                (FunImpCall cid args assignees)
-                post =
+instance ImpBackwardPT FunImplEnv (FunImpCall e) where
+  impBackwardPT impls (FunImpCall cid args assignees) post =
     case Map.lookup cid impls of
       Nothing   -> throwError $ "No implementation for " ++ cid
       Just impl -> do
-        let (nextIds', FunImpl params body returns) = runFreshen freshIds impl
-        -- Create predicate equating returns and assignees
-        -- wp <- impBackwardPT impls body -- pred /\ post
-        -- Create predicate equating args and params
-        -- return pred /\ wp
-        error "Unimplemeted"
+        FunImpl params body returns <- envFreshen impl
+        post' <- assignBackward impls assignees (map AVar returns) post
+        wp    <- impBackwardPT impls body post'
+        wp'   <- assignBackward impls params args wp
+        return wp'
 
-instance ImpBackwardPT PTSContext FunImpProgram where
+instance ImpBackwardPT FunImplEnv FunImpProgram where
   impBackwardPT ctx (In f) post = impBackwardPT ctx f post
+
+assignBackward :: FunImplEnv -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+assignBackward impls params args post =
+  if length params /= length args
+    then throwError "Different number of params and args"
+    else do
+      let doAsgn post' (a1, a2) = impBackwardPT impls (ImpAsgn a1 a2) post'
+      foldM doAsgn post $ zip params args
 
 
 ----------------------------------
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance ImpForwardPT PTSContext (FunImpCall e) where
-  impForwardPT (PTSContext impls freshIds) (FunImpCall cid args assignees) pre =
+instance ImpForwardPT FunImplEnv (FunImpCall e) where
+  impForwardPT impls (FunImpCall cid args assignees) pre =
     case Map.lookup cid impls of
       Nothing -> throwError $ "No implementation for " ++ cid
       Just impl -> do
-        error "unimplemented"
+        FunImpl params body returns <- envFreshen impl
+        pre' <- assignForward impls params args pre
+        sp   <- impForwardPT impls body pre'
+        sp'  <- assignForward impls assignees (map AVar returns) sp
+        return sp'
 
-instance ImpForwardPT PTSContext FunImpProgram where
+instance ImpForwardPT FunImplEnv FunImpProgram where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre
+
+assignForward :: FunImplEnv -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+assignForward impls params args pre =
+  if length params /= length args
+    then throwError "Different number of params and args"
+    else do
+      let doAsgn pre' (a1, a2) = impForwardPT impls (ImpAsgn a1 a2) pre'
+      foldM doAsgn pre $ zip params args

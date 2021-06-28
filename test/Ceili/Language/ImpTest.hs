@@ -39,10 +39,10 @@ test_forwardPT = do
         \ (exists ((y!1 int)) \
         \   (and (= y 0)      \
         \        (and (exists ((x!1 int)) (and (= x 5) true)) (< x 0)))) \
-        \ (exists ((y!1 int)) \
+        \ (exists ((y!2 int)) \
         \   (and (= y 1)      \
         \        (and (exists ((x!1 int)) (and (= x 5) true)) (not (< x 0))))))"
-  actualEither <- runCeili defaultEnv $ impForwardPT () prog1 ATrue
+  actualEither <- runCeili (mkEnv prog1) $ impForwardPT () prog1 ATrue
   case actualEither of
     Left err     -> assertFailure $ show err
     Right actual -> assertEqual expected actual
@@ -53,7 +53,7 @@ test_backwardPT = do
         "(and \
         \  (=> (< 5 0) (= 0 1)) \
         \  (=> (not (< 5 0)) (= 1 1)))"
-  actualEither <- runCeili defaultEnv $ impBackwardPT () prog1 post
+  actualEither <- runCeili (mkEnv prog1) $ impBackwardPT () prog1 post
   case actualEither of
     Left err     -> assertFailure $ show err
     Right actual -> assertEqual expected actual

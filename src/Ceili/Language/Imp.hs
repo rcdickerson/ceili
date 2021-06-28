@@ -52,8 +52,7 @@ import Ceili.Name ( CollectableNames(..)
                   , Name(..)
                   , TypedName(..)
                   , Type(..)
-                  , freshen
-                  , runFreshen )
+                  , freshen )
 import qualified Ceili.Name as Name
 import Ceili.SMTString ( showSMT )
 import Data.List ( partition )
@@ -391,7 +390,9 @@ instance (CollectableNames e, ImpBackwardPT c e, ImpForwardPT c e) => ImpBackwar
                    mInferredInv <- Pie.loopInvGen impBackwardPT impForwardPT ctx cond body post tests
                    case mInferredInv of
                      Just inv -> return inv
-                     Nothing  -> throwError "Unable to infer loop invariant."
+                     Nothing  -> do
+                       log_i "Unable to infer loop invariant, proceeding with False"
+                       return A.AFalse
       bodyWP <- impBackwardPT ctx body inv
       let loopWP = A.Forall qNames
                    (freshen $ A.Imp (A.And [cond, inv]) bodyWP)
@@ -419,15 +420,15 @@ instance ImpForwardPT c (ImpSkip e) where
   impForwardPT _ ImpSkip pre = return pre
 
 instance ImpForwardPT c (ImpAsgn e) where
-  impForwardPT _ (ImpAsgn lhs rhs) pre = let
-    names     = Set.unions [ namesIn lhs, namesIn rhs, namesIn pre ]
-    (_, lhs') = runFreshen (Name.buildFreshIds names) lhs
-    subPre    = Name.substitute lhs lhs' pre
-    rhsArith  = aexpToArith rhs
-    ilhs      = TypedName lhs  Name.Int
-    ilhs'     = TypedName lhs' Name.Int
-    subRhs    = A.subArith ilhs (A.Var ilhs') rhsArith
-    in return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
+  impForwardPT _ (ImpAsgn lhs rhs) pre = do
+    lhs' <- envFreshen lhs
+    let
+      subPre   = Name.substitute lhs lhs' pre
+      rhsArith = aexpToArith rhs
+      ilhs     = TypedName lhs  Name.Int
+      ilhs'    = TypedName lhs' Name.Int
+      subRhs   = A.subArith ilhs (A.Var ilhs') rhsArith
+    return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
 
 instance ImpForwardPT c e => ImpForwardPT c (ImpSeq e) where
   impForwardPT ctx (ImpSeq stmts) pre = case stmts of

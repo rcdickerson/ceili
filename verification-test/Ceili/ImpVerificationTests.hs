@@ -25,14 +25,14 @@ assertSMTResult expected result =
       $ "Expected INVALID but was VALID"
     _ -> assertFailure "Unknown SMT result"
 
-assertRunsWithoutErrors task check = do
-  spOrErr <- runCeili defaultEnv $ task
+assertRunsWithoutErrors env task check = do
+  spOrErr <- runCeili env task
   case spOrErr of
     Left err     -> assertFailure $ show err
     Right result -> check result
 
-assertRunsWithError task expectedErr = do
-  spOrErr <- runCeili defaultEnv $ task
+assertRunsWithError env task expectedErr = do
+  spOrErr <- runCeili env task
   case spOrErr of
     Left err     -> assertEqual expectedErr err
     Right result -> assertFailure $ "Unexpected success: " ++ show result
@@ -49,10 +49,6 @@ readAndParse path = do
     Left  err     -> assertFailure $ "Parse error: " ++ (show err)
     Right program -> return program
 
-
-varX = Var $ TypedName (Name "x" 0) Int
-varY = Var $ TypedName (Name "y" 0) Int
-
 mkTestStartStates :: CollectableNames n => n -> [State]
 mkTestStartStates cnames =
   let names = Set.toList $ namesIn cnames
@@ -61,38 +57,29 @@ mkTestStartStates cnames =
      , Map.fromList $ map (\n -> (n, -1)) names
      ]
 
-
-test_forwardInferInv1Valid = do
-  let post = Eq varX varY
-  prog <- readAndParse "inferInv1.imp"
-  assertRunsWithoutErrors (impForwardPT () prog ATrue) $
+runForward expectedResult progFile pre post = do
+  prog <- readAndParse progFile
+  assertRunsWithoutErrors (mkEnv prog) (impForwardPT () prog pre) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
-      assertSMTResult ExpectSuccess smtResult
+      assertSMTResult expectedResult smtResult
 
-test_forwardInferInv1Invalid = do
-  let post = Not $ Eq varX varY
-  prog <- readAndParse "inferInv1.imp"
-  assertRunsWithoutErrors (impForwardPT () prog ATrue) $
-    \result -> do
-      smtResult <- SMT.checkValid $ Imp result post
-      assertSMTResult ExpectFailure smtResult
-
-test_backwardInferInv1Valid = do
-  let post = Eq varX varY
-  prog <- readAndParse "inferInv1.imp"
+runBackward expectedResult progFile pre post = do
+  prog <- readAndParse progFile
   let findWP = do
         progWithTests <- populateTestStates (Fuel 1000) (mkTestStartStates prog) prog
         impBackwardPT () progWithTests post
-  assertRunsWithoutErrors findWP $
+  assertRunsWithoutErrors (mkEnv prog) findWP $
     \result -> do
-      smtResult <- SMT.checkValid result
-      assertSMTResult ExpectSuccess smtResult
+      smtResult <- SMT.checkValid $ Imp pre result
+      assertSMTResult expectedResult smtResult
 
-test_backwardInferInv1Invalid = do
-  let post = Not $ Eq varX varY
-  prog <- readAndParse "inferInv1.imp"
-  let findWP = do
-        progWithTests <- populateTestStates (Fuel 1000) (mkTestStartStates prog) prog
-        impBackwardPT () progWithTests post
-  assertRunsWithError findWP "Unable to infer loop invariant."
+
+varX = Var $ TypedName (Name "x" 0) Int
+varY = Var $ TypedName (Name "y" 0) Int
+
+
+test_forward_inferInv1_valid    = runForward  ExpectSuccess "inferInv1.imp" ATrue $ Eq varX varY
+test_forward_inferInv1_invalid  = runForward  ExpectFailure "inferInv1.imp" ATrue $ Not (Eq varX varY)
+test_backward_inferInv1_valid   = runBackward ExpectSuccess "inferInv1.imp" ATrue $ Eq varX varY
+test_backward_inferInv1_invalid = runBackward ExpectFailure "inferInv1.imp" ATrue $ Not (Eq varX varY)

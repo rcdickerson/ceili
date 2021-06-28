@@ -68,7 +68,7 @@ loopInvGen :: (CollectableNames p) =>
            -> [Test]
            -> Ceili (Maybe Assertion)
 loopInvGen backwardPT forwardPT ctx cond body post goodTests = do
-  log_i $ "[PIE] Beginning invariant learning"
+  log_i $ "[PIE] Beginning invariant inference with PIE"
   let testNames = Set.unions $ map namesInToInt goodTests
       names     = Set.union (namesInToInt body) testNames
       lits      = Set.empty -- TODO: Lits
