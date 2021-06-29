@@ -29,7 +29,6 @@ import Ceili.Language.BExp
 import Ceili.Language.Compose
 import Ceili.Language.Imp
 import Ceili.Name
-import Ceili.SMTString
 import Control.Monad ( foldM )
 import Data.Map ( Map )
 import qualified Data.Map as Map
@@ -118,8 +117,8 @@ impCall cid args assignees = inject $ FunImpCall cid args assignees
 -----------------
 
 data FunEvalContext = FunEvalContext { fiec_fuel  :: Fuel
-                             , fiec_impls :: FunImplEnv
-                             }
+                                     , fiec_impls :: FunImplEnv
+                                     }
 
 instance FuelTank FunEvalContext where
   getFuel = fiec_fuel
