@@ -26,6 +26,7 @@ module Ceili.Language.FunImp
   , impAsgn
   , impCall
   , impIf
+  , impSeq
   , impSkip
   , impWhile
   , impForwardPT
