@@ -62,6 +62,10 @@ import qualified Data.Set as Set
 import qualified Data.Map as Map
 
 
+--------------
+-- Language --
+--------------
+
 data ImpExpr f = In (f (ImpExpr f))
 
 instance Eq (f (ImpExpr f)) => Eq (ImpExpr f) where
@@ -81,6 +85,19 @@ data ImpSeq e = ImpSeq [e]
 
 data ImpIf e = ImpIf BExp e e
   deriving (Eq, Ord, Show, Functor)
+
+data ImpWhile e = ImpWhile BExp e ImpWhileMetadata
+  deriving (Eq, Ord, Show, Functor)
+
+type ImpProgram = ImpExpr ( ImpSkip
+                        :+: ImpAsgn
+                        :+: ImpSeq
+                        :+: ImpIf
+                        :+: ImpWhile )
+
+-----------------------
+-- ImpWhile Metadata --
+-----------------------
 
 type Invariant = Assertion
 type Measure   = A.Arith
@@ -113,14 +130,10 @@ instance FreshableNames ImpWhileMetadata where
                     return $ Just (Set.fromList testList')
     return $ ImpWhileMetadata invar' measure' tests'
 
-data ImpWhile e = ImpWhile BExp e ImpWhileMetadata
-  deriving (Eq, Ord, Show, Functor)
 
-type ImpProgram = ImpExpr ( ImpSkip
-                        :+: ImpAsgn
-                        :+: ImpSeq
-                        :+: ImpIf
-                        :+: ImpWhile )
+------------------------
+-- Smart Constructors --
+------------------------
 
 inject :: (g :<: f) => g (ImpExpr f) -> ImpExpr f
 inject = In . inj
@@ -150,6 +163,10 @@ impWhileWithMeta :: (ImpWhile :<: f) => BExp -> ImpExpr f -> ImpWhileMetadata ->
 impWhileWithMeta cond body meta = inject $ ImpWhile cond body meta
 
 
+----------------------
+-- CollectableNames --
+----------------------
+
 instance CollectableNames (ImpSkip e) where
   namesIn ImpSkip = Set.empty
 
@@ -170,6 +187,10 @@ instance CollectableNames ImpProgram
   where namesIn (In p) = namesIn p
 
 
+-------------------
+-- MappableNames --
+-------------------
+
 instance MappableNames (ImpSkip e) where
   mapNames _ ImpSkip = ImpSkip
 
@@ -189,6 +210,10 @@ instance MappableNames e => MappableNames (ImpWhile e) where
 instance MappableNames ImpProgram
   where mapNames f (In p) = In $ mapNames f p
 
+
+--------------------
+-- FreshableNames --
+--------------------
 
 instance FreshableNames (ImpSkip e) where
   freshen ImpSkip = return ImpSkip
@@ -215,6 +240,7 @@ instance FreshableNames e => FreshableNames (ImpWhile e) where
     body' <- freshen body
     meta' <- freshen meta
     return $ ImpWhile cond' body' meta'
+
 
 -----------------
 -- Interpreter --
