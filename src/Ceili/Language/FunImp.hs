@@ -8,6 +8,7 @@
 module Ceili.Language.FunImp
   ( AExp(..)
   , BExp(..)
+  , CallId
   , Fuel(..)
   , FunEvalContext(..)
   , FunImpl(..)
