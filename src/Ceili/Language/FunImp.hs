@@ -11,13 +11,22 @@ module Ceili.Language.FunImp
   , Fuel(..)
   , FunEvalContext(..)
   , FunImpl(..)
-  , FunImpCall(..)
   , FunImplEnv
   , FunImpProgram
+  , ImpAsgn(..)
+  , ImpCall(..)
+  , ImpIf(..)
+  , ImpSkip(..)
+  , ImpSeq(..)
+  , ImpWhile(..)
   , Name(..)
   , State
   , impBackwardPT
+  , impAsgn
   , impCall
+  , impIf
+  , impSkip
+  , impWhile
   , impForwardPT
   , populateTestStates
   ) where
@@ -70,29 +79,29 @@ type FunImplEnv = Map Handle FunImpl
 
 type CallId = String
 
-data FunImpCall e = FunImpCall CallId [AExp] [Name]
+data ImpCall e = ImpCall CallId [AExp] [Name]
                 deriving (Eq, Ord, Show, Functor)
 
-instance CollectableNames (FunImpCall e) where
-  namesIn (FunImpCall _ args assignees) =
+instance CollectableNames (ImpCall e) where
+  namesIn (ImpCall _ args assignees) =
     Set.union (namesIn args) (namesIn assignees)
 
-instance FreshableNames (FunImpCall e) where
-  freshen (FunImpCall cid args assignees) = do
+instance FreshableNames (ImpCall e) where
+  freshen (ImpCall cid args assignees) = do
     args'      <- freshen args
     assignees' <- freshen assignees
-    return $ FunImpCall cid args' assignees'
+    return $ ImpCall cid args' assignees'
 
-instance MappableNames (FunImpCall e) where
-  mapNames f (FunImpCall cid args assignees) =
-    FunImpCall cid (map (mapNames f) args) (map f assignees)
+instance MappableNames (ImpCall e) where
+  mapNames f (ImpCall cid args assignees) =
+    ImpCall cid (map (mapNames f) args) (map f assignees)
 
 
 ---------------------
 -- FunImp Language --
 ---------------------
 
-type FunImpProgram = ImpExpr ( FunImpCall
+type FunImpProgram = ImpExpr ( ImpCall
                            :+: ImpSkip
                            :+: ImpAsgn
                            :+: ImpSeq
@@ -108,8 +117,8 @@ instance MappableNames FunImpProgram where
 instance FreshableNames FunImpProgram where
   freshen (In f) = return . In =<< freshen f
 
-impCall :: (FunImpCall :<: f) => CallId -> [AExp] -> [Name] -> ImpExpr f
-impCall cid args assignees = inject $ FunImpCall cid args assignees
+impCall :: (ImpCall :<: f) => CallId -> [AExp] -> [Name] -> ImpExpr f
+impCall cid args assignees = inject $ ImpCall cid args assignees
 
 
 -----------------
@@ -124,8 +133,8 @@ instance FuelTank FunEvalContext where
   getFuel = fiec_fuel
   setFuel (FunEvalContext _ impls) fuel = FunEvalContext fuel impls
 
-instance EvalImp FunEvalContext (FunImpCall e) where
-  evalImp ctx st (FunImpCall cid args assignees) =
+instance EvalImp FunEvalContext (ImpCall e) where
+  evalImp ctx st (ImpCall cid args assignees) =
     let impls = fiec_impls ctx
     in case Map.lookup cid impls of
       Nothing -> do
@@ -150,7 +159,7 @@ instance EvalImp FunEvalContext FunImpProgram where
 -- Test States --
 -----------------
 
-instance PopulateTestStates FunEvalContext (FunImpCall e) where
+instance PopulateTestStates FunEvalContext (ImpCall e) where
   populateTestStates _ _ = return . id
 
 instance PopulateTestStates FunEvalContext FunImpProgram where
@@ -161,8 +170,8 @@ instance PopulateTestStates FunEvalContext FunImpProgram where
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance ImpBackwardPT FunImplEnv (FunImpCall e) where
-  impBackwardPT impls (FunImpCall cid args assignees) post =
+instance ImpBackwardPT FunImplEnv (ImpCall e) where
+  impBackwardPT impls (ImpCall cid args assignees) post =
     case Map.lookup cid impls of
       Nothing   -> throwError $ "No implementation for " ++ cid
       Just impl -> do
@@ -188,8 +197,8 @@ assignBackward impls params args post =
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance ImpForwardPT FunImplEnv (FunImpCall e) where
-  impForwardPT impls (FunImpCall cid args assignees) pre =
+instance ImpForwardPT FunImplEnv (ImpCall e) where
+  impForwardPT impls (ImpCall cid args assignees) pre =
     case Map.lookup cid impls of
       Nothing -> throwError $ "No implementation for " ++ cid
       Just impl -> do
