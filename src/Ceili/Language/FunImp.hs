@@ -169,6 +169,9 @@ instance PopulateTestStates FunEvalContext FunImpProgram where
   populateTestStates ctx sts (In f) = populateTestStates ctx sts f >>= return . In
 
 
+-- TODO: PTSes don't handle recursion. Add detection to fail gracefully instead of
+-- spinning forever.
+
 ----------------------------------
 -- Backward Predicate Transform --
 ----------------------------------
