@@ -29,6 +29,7 @@ module Ceili.Language.FunImp
   , impSeq
   , impSkip
   , impWhile
+  , impWhileWithMeta
   , impForwardPT
   , populateTestStates
   ) where
