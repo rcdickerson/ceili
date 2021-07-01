@@ -16,6 +16,7 @@ module Ceili.Language.FunImp
   , FunImpProgram
   , ImpAsgn(..)
   , ImpCall(..)
+  , ImpExpr(..)
   , ImpIf(..)
   , ImpSkip(..)
   , ImpSeq(..)
