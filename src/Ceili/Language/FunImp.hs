@@ -11,6 +11,7 @@ module Ceili.Language.FunImp
   , CallId
   , EvalImp(..)
   , Fuel(..)
+  , FuelTank(..)
   , FunEvalContext(..)
   , FunImpl(..)
   , FunImplEnv
