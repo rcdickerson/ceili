@@ -17,15 +17,16 @@ module Ceili.Language.FunImp
   , FunImplEnv
   , FunImpProgram
   , ImpAsgn(..)
+  , ImpBackwardPT(..)
   , ImpCall(..)
   , ImpExpr(..)
+  , ImpForwardPT(..)
   , ImpIf(..)
   , ImpSkip(..)
   , ImpSeq(..)
   , ImpWhile(..)
   , Name(..)
   , State
-  , impBackwardPT
   , impAsgn
   , impCall
   , impIf
@@ -33,7 +34,6 @@ module Ceili.Language.FunImp
   , impSkip
   , impWhile
   , impWhileWithMeta
-  , impForwardPT
   , populateTestStates
   ) where
 
