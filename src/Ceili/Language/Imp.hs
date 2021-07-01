@@ -241,6 +241,9 @@ instance FreshableNames e => FreshableNames (ImpWhile e) where
     meta' <- freshen meta
     return $ ImpWhile cond' body' meta'
 
+instance FreshableNames ImpProgram where
+  freshen (In p) = return . In =<< freshen p
+
 
 -----------------
 -- Interpreter --
