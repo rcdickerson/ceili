@@ -25,6 +25,7 @@ module Ceili.Language.FunImp
   , ImpSkip(..)
   , ImpSeq(..)
   , ImpWhile(..)
+  , ImpWhileMetadata(..)
   , Name(..)
   , State
   , impAsgn
