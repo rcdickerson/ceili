@@ -399,7 +399,7 @@ instance ImpBackwardPT c e => ImpBackwardPT c (ImpIf e) where
         ncond  = A.Not $ cond
     return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
 
-instance (CollectableNames e, ImpBackwardPT c e, ImpForwardPT c e) => ImpBackwardPT c (ImpWhile e) where
+instance (CollectableNames e, ImpBackwardPT c e) => ImpBackwardPT c (ImpWhile e) where
   impBackwardPT ctx (ImpWhile condB body meta) post = let
     cond          = bexpToAssertion condB
     varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
@@ -416,7 +416,7 @@ instance (CollectableNames e, ImpBackwardPT c e, ImpForwardPT c e) => ImpBackwar
                    "No test states for while loop, did you run populateTestStates?"
                  Just testStates -> do
                    let tests = Set.toList testStates
-                   mInferredInv <- Pie.loopInvGen impBackwardPT impForwardPT ctx cond body post tests
+                   mInferredInv <- Pie.loopInvGen impBackwardPT ctx cond body post tests
                    case mInferredInv of
                      Just inv -> return inv
                      Nothing  -> do
