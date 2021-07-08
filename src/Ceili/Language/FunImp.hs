@@ -45,7 +45,6 @@ import Ceili.Language.BExp
 import Ceili.Language.Compose
 import Ceili.Language.Imp
 import Ceili.Name
-import Ceili.SMTString
 import Control.Monad ( foldM )
 import Data.Map ( Map )
 import qualified Data.Map as Map
