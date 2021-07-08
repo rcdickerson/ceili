@@ -36,6 +36,7 @@ module Ceili.Language.FunImp
   , impSkip
   , impWhile
   , impWhileWithMeta
+  , inject
   , populateTestStates
   ) where
 
