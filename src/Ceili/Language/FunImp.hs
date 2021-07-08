@@ -45,6 +45,7 @@ import Ceili.Language.BExp
 import Ceili.Language.Compose
 import Ceili.Language.Imp
 import Ceili.Name
+import Ceili.SMTString
 import Control.Monad ( foldM )
 import Data.Map ( Map )
 import qualified Data.Map as Map
@@ -213,9 +214,15 @@ instance ImpForwardPT FunImplEnv (ImpCall e) where
       Nothing -> throwError $ "No implementation for " ++ cid
       Just impl -> do
         FunImpl params body returns <- envFreshen impl
+        log_i $ "*** impl: " ++ show impl
+        log_i $ "*** fresh impl: " ++ show (FunImpl params body returns)
+        log_i $ "*** pre: " ++ showSMT pre
         pre' <- assignForward impls params args pre
+        log_i $ "*** pre': " ++ showSMT pre'
         sp   <- impForwardPT impls body pre'
+        log_i $ "*** sp: " ++ showSMT sp
         sp'  <- assignForward impls assignees (map AVar returns) sp
+        log_i $ "*** sp': " ++ showSMT sp'
         return sp'
 
 instance ImpForwardPT FunImplEnv FunImpProgram where
