@@ -189,8 +189,7 @@ instance ImpBackwardPT FunImplEnv (ImpCall e) where
         FunImpl params body returns <- envFreshen impl
         post' <- assignBackward impls assignees (map AVar returns) post
         wp    <- impBackwardPT impls body post'
-        wp'   <- assignBackward impls params args wp
-        return wp'
+        assignBackward impls params args wp
 
 instance ImpBackwardPT FunImplEnv FunImpProgram where
   impBackwardPT ctx (In f) post = impBackwardPT ctx f post
@@ -214,16 +213,9 @@ instance ImpForwardPT FunImplEnv (ImpCall e) where
       Nothing -> throwError $ "No implementation for " ++ cid
       Just impl -> do
         FunImpl params body returns <- envFreshen impl
-        log_i $ "*** impl: " ++ show impl
-        log_i $ "*** fresh impl: " ++ show (FunImpl params body returns)
-        log_i $ "*** pre: " ++ showSMT pre
         pre' <- assignForward impls params args pre
-        log_i $ "*** pre': " ++ showSMT pre'
         sp   <- impForwardPT impls body pre'
-        log_i $ "*** sp: " ++ showSMT sp
-        sp'  <- assignForward impls assignees (map AVar returns) sp
-        log_i $ "*** sp': " ++ showSMT sp'
-        return sp'
+        assignForward impls assignees (map AVar returns) sp
 
 instance ImpForwardPT FunImplEnv FunImpProgram where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre
