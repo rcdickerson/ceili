@@ -77,7 +77,20 @@ instance FreshableNames FunImpl where
     returns' <- freshen returns
     return $ FunImpl params' body' returns'
 
+
+------------------------------------------
+-- Function Implementation Environments --
+------------------------------------------
+
 type FunImplEnv = Map Handle FunImpl
+
+class FunImplLookup a where
+  lookupFunImpl :: a -> Handle -> Ceili FunImpl
+
+instance FunImplLookup FunImplEnv where
+  lookupFunImpl env name = case Map.lookup name env of
+      Nothing   -> throwError $ "No implementation for " ++ name
+      Just impl -> return impl
 
 
 --------------------
@@ -178,29 +191,28 @@ instance PopulateTestStates FunEvalContext FunImpProgram where
 -- TODO: PTSes don't handle recursion. Add detection to fail gracefully instead of
 -- spinning forever.
 
+
 ----------------------------------
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance ImpBackwardPT FunImplEnv (ImpCall e) where
-  impBackwardPT impls (ImpCall cid args assignees) post =
-    case Map.lookup cid impls of
-      Nothing   -> throwError $ "No implementation for " ++ cid
-      Just impl -> do
-        FunImpl params body returns <- envFreshen impl
-        post' <- assignBackward impls assignees (map AVar returns) post
-        wp    <- impBackwardPT impls body post'
-        assignBackward impls params args wp
-
-instance ImpBackwardPT FunImplEnv FunImpProgram where
+instance FunImplLookup ctx => ImpBackwardPT ctx FunImpProgram where
   impBackwardPT ctx (In f) post = impBackwardPT ctx f post
 
-assignBackward :: FunImplEnv -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
-assignBackward impls params args post =
+instance FunImplLookup ctx => ImpBackwardPT ctx (ImpCall e) where
+  impBackwardPT ctx (ImpCall cid args assignees) post = do
+    impl <- lookupFunImpl ctx cid
+    FunImpl params body returns <- envFreshen impl
+    post' <- assignBackward ctx assignees (map AVar returns) post
+    wp    <- impBackwardPT ctx body post'
+    assignBackward ctx params args wp
+
+assignBackward :: FunImplLookup ctx => ctx -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+assignBackward ctx params args post =
   if length params /= length args
     then throwError "Different number of params and args"
     else do
-      let doAsgn post' (a1, a2) = impBackwardPT impls (ImpAsgn a1 a2) post'
+      let doAsgn post' (a1, a2) = impBackwardPT ctx (ImpAsgn a1 a2) post'
       foldM doAsgn post $ zip params args
 
 
@@ -208,20 +220,18 @@ assignBackward impls params args post =
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance ImpForwardPT FunImplEnv (ImpCall e) where
-  impForwardPT impls (ImpCall cid args assignees) pre =
-    case Map.lookup cid impls of
-      Nothing -> throwError $ "No implementation for " ++ cid
-      Just impl -> do
-        FunImpl params body returns <- envFreshen impl
-        pre' <- assignForward impls params args pre
-        sp   <- impForwardPT impls body pre'
-        assignForward impls assignees (map AVar returns) sp
-
-instance ImpForwardPT FunImplEnv FunImpProgram where
+instance FunImplLookup ctx => ImpForwardPT ctx FunImpProgram where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre
 
-assignForward :: FunImplEnv -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+instance FunImplLookup ctx => ImpForwardPT ctx (ImpCall e) where
+  impForwardPT ctx (ImpCall cid args assignees) pre = do
+    impl <- lookupFunImpl ctx cid
+    FunImpl params body returns <- envFreshen impl
+    pre' <- assignForward ctx params args pre
+    sp   <- impForwardPT ctx body pre'
+    assignForward ctx assignees (map AVar returns) sp
+
+assignForward :: FunImplLookup ctx => ctx -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
 assignForward impls params args pre =
   if length params /= length args
     then throwError "Different number of params and args"
