@@ -15,6 +15,7 @@ module Ceili.Language.FunImp
   , FunEvalContext(..)
   , FunImpl(..)
   , FunImplEnv
+  , FunImplLookup(..)
   , FunImpProgram
   , ImpAsgn(..)
   , ImpBackwardPT(..)
