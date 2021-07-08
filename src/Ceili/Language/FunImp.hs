@@ -158,6 +158,8 @@ instance EvalImp FunEvalContext (ImpCall e) where
             assignments = Map.fromList $ zip assignees retVals
             in Just $ Map.union assignments st
 
+-- TODO: Evaluating a function call should cost fuel to prevent infinite recursion.
+
 instance EvalImp FunEvalContext FunImpProgram where
   evalImp ctx st (In f) = evalImp ctx st f
 
