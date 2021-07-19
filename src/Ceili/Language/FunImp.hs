@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
@@ -57,22 +58,22 @@ import qualified Data.Set as Set
 -- Function Implementations --
 ------------------------------
 
-data FunImpl = FunImpl { fimpl_params  :: [Name]
-                       , fimpl_body    :: FunImpProgram
-                       , fimpl_returns :: [Name]
-                       } deriving (Eq, Show)
+data FunImpl e = FunImpl { fimpl_params  :: [Name]
+                         , fimpl_body    :: e
+                         , fimpl_returns :: [Name]
+                         } deriving (Eq, Show)
 
-instance CollectableNames FunImpl where
+instance CollectableNames e => CollectableNames (FunImpl e) where
   namesIn (FunImpl params body returns) =
     Set.unions [ Set.fromList params
                , namesIn body
                , Set.fromList returns ]
 
-instance MappableNames FunImpl where
+instance MappableNames e => MappableNames (FunImpl e) where
   mapNames f (FunImpl params body returns) =
     FunImpl (map f params) (mapNames f body) (map f returns)
 
-instance FreshableNames FunImpl where
+instance FreshableNames e => FreshableNames (FunImpl e) where
   freshen (FunImpl params body returns) = do
     params'  <- freshen params
     body'    <- freshen body
@@ -84,12 +85,12 @@ instance FreshableNames FunImpl where
 -- Function Implementation Environments --
 ------------------------------------------
 
-type FunImplEnv = Map Handle FunImpl
+type FunImplEnv e = Map Handle (FunImpl e)
 
-class FunImplLookup a where
-  lookupFunImpl :: a -> Handle -> Ceili FunImpl
+class FunImplLookup a e where
+  lookupFunImpl :: a -> Handle -> Ceili (FunImpl e)
 
-instance FunImplLookup FunImplEnv where
+instance FunImplLookup (FunImplEnv e) e where
   lookupFunImpl env name = case Map.lookup name env of
       Nothing   -> throwError $ "No implementation for " ++ name
       Just impl -> return impl
@@ -147,15 +148,15 @@ impCall cid args assignees = inject $ ImpCall cid args assignees
 -- Interpreter --
 -----------------
 
-data FunEvalContext = FunEvalContext { fiec_fuel  :: Fuel
-                                     , fiec_impls :: FunImplEnv
-                                     }
+data FunEvalContext e = FunEvalContext { fiec_fuel  :: Fuel
+                                       , fiec_impls :: FunImplEnv e
+                                       }
 
-instance FuelTank FunEvalContext where
+instance FuelTank (FunEvalContext e) where
   getFuel = fiec_fuel
   setFuel (FunEvalContext _ impls) fuel = FunEvalContext fuel impls
 
-instance EvalImp FunEvalContext (ImpCall e) where
+instance EvalImp (FunEvalContext e) e => EvalImp (FunEvalContext e) (ImpCall e) where
   evalImp ctx st (ImpCall cid args assignees) =
     let impls = fiec_impls ctx
     in case Map.lookup cid impls of
@@ -175,7 +176,7 @@ instance EvalImp FunEvalContext (ImpCall e) where
 
 -- TODO: Evaluating a function call should cost fuel to prevent infinite recursion.
 
-instance EvalImp FunEvalContext FunImpProgram where
+instance EvalImp (FunEvalContext FunImpProgram) FunImpProgram where
   evalImp ctx st (In f) = evalImp ctx st f
 
 
@@ -183,10 +184,10 @@ instance EvalImp FunEvalContext FunImpProgram where
 -- Test States --
 -----------------
 
-instance PopulateTestStates FunEvalContext (ImpCall e) where
+instance EvalImp (FunEvalContext e) e => PopulateTestStates (FunEvalContext e) (ImpCall e) where
   populateTestStates _ _ = return . id
 
-instance PopulateTestStates FunEvalContext FunImpProgram where
+instance PopulateTestStates (FunEvalContext FunImpProgram) FunImpProgram where
   populateTestStates ctx sts (In f) = populateTestStates ctx sts f >>= return . In
 
 
@@ -198,18 +199,18 @@ instance PopulateTestStates FunEvalContext FunImpProgram where
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance FunImplLookup ctx => ImpBackwardPT ctx FunImpProgram where
+instance ImpBackwardPT (FunImplEnv FunImpProgram) FunImpProgram where
   impBackwardPT ctx (In f) post = impBackwardPT ctx f post
 
-instance FunImplLookup ctx => ImpBackwardPT ctx (ImpCall e) where
+instance (FunImplLookup c e, ImpBackwardPT c e, FreshableNames e) => ImpBackwardPT c (ImpCall e) where
   impBackwardPT ctx (ImpCall cid args assignees) post = do
-    impl <- lookupFunImpl ctx cid
+    (impl :: FunImpl e) <- lookupFunImpl ctx cid
     FunImpl params body returns <- envFreshen impl
     post' <- assignBackward ctx assignees (map AVar returns) post
     wp    <- impBackwardPT ctx body post'
     assignBackward ctx params args wp
 
-assignBackward :: FunImplLookup ctx => ctx -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+assignBackward :: c -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
 assignBackward ctx params args post =
   if length params /= length args
     then throwError "Different number of params and args"
@@ -222,18 +223,18 @@ assignBackward ctx params args post =
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance FunImplLookup ctx => ImpForwardPT ctx FunImpProgram where
+instance ImpForwardPT (FunImplEnv FunImpProgram) FunImpProgram where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre
 
-instance FunImplLookup ctx => ImpForwardPT ctx (ImpCall e) where
+instance (FunImplLookup c e, ImpForwardPT c e, FreshableNames e) => ImpForwardPT c (ImpCall e) where
   impForwardPT ctx (ImpCall cid args assignees) pre = do
-    impl <- lookupFunImpl ctx cid
+    (impl :: FunImpl e) <- lookupFunImpl ctx cid
     FunImpl params body returns <- envFreshen impl
     pre' <- assignForward ctx params args pre
     sp   <- impForwardPT ctx body pre'
     assignForward ctx assignees (map AVar returns) sp
 
-assignForward :: FunImplLookup ctx => ctx -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+assignForward :: c -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
 assignForward impls params args pre =
   if length params /= length args
     then throwError "Different number of params and args"

@@ -15,13 +15,13 @@ import qualified Data.Map as Map
 x = Name "x" 0
 y = Name "y" 0
 
-add1Impl :: FunImpl
+add1Impl :: (FunImpl FunImpProgram)
 add1Impl = FunImpl { fimpl_params = [x]
                    , fimpl_body = impAsgn y $ AAdd (AVar x) (ALit 1)
                    , fimpl_returns = [y]
                    }
 
-add2Impl :: FunImpl
+add2Impl :: (FunImpl FunImpProgram)
 add2Impl = FunImpl { fimpl_params = [x]
                    , fimpl_body = impSeq
                                   [ impCall "add1" [AVar x] [y]

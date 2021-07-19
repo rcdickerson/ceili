@@ -14,7 +14,7 @@ import qualified Data.Map as Map
 import Text.Parsec
 import qualified Text.Parsec.Token as Token
 
-type FunImpParser a = Parsec String FunImplEnv a
+type FunImpParser a = Parsec String (FunImplEnv FunImpProgram) a
 type ProgramParser = FunImpParser FunImpProgram
 
 funImpLanguageDef :: Token.LanguageDef a
@@ -34,10 +34,10 @@ reservedOp = Token.reservedOp lexer
 semi       = Token.semi       lexer
 whiteSpace = Token.whiteSpace lexer
 
-parseFunImp :: String -> Either ParseError FunImplEnv
+parseFunImp :: String -> Either ParseError (FunImplEnv FunImpProgram)
 parseFunImp str = runParser program Map.empty "" str
 
-program :: FunImpParser FunImplEnv
+program :: FunImpParser (FunImplEnv FunImpProgram)
 program = do
   _ <- many1 $ whiteSpace >> funDef
   getState
