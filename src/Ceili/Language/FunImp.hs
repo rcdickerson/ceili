@@ -28,6 +28,7 @@ module Ceili.Language.FunImp
   , ImpSeq(..)
   , ImpWhile(..)
   , ImpWhileMetadata(..)
+  , PopulateTestStates(..)
   , Name(..)
   , State
   , impAsgn
@@ -38,7 +39,6 @@ module Ceili.Language.FunImp
   , impWhile
   , impWhileWithMeta
   , inject
-  , populateTestStates
   ) where
 
 import Ceili.Assertion
