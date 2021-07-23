@@ -95,6 +95,8 @@ instance FunImplLookup (FunImplEnv e) e where
       Nothing   -> throwError $ "No implementation for " ++ name
       Just impl -> return impl
 
+instance CollectableNames e => CollectableNames (FunImplEnv e) where
+  namesIn = namesIn . Map.elems
 
 --------------------
 -- Function Calls --
