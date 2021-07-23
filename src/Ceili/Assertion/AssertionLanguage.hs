@@ -4,8 +4,8 @@ module Ceili.Assertion.AssertionLanguage
   ( Arith(..)
   , Assertion(..)
   , Name(..)
+  , SubstitutableArith(..)
   , freeVars
-  , subArith
   , subAriths
   , toSMT
   ) where

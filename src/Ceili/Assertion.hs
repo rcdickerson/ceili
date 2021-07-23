@@ -3,10 +3,10 @@ module Ceili.Assertion
   , Assertion(..)
   , Name(..)
   , ParseError
+  , SubstitutableArith(..)
   , freeVars
   , parseArith
   , parseAssertion
-  , subArith
   , subAriths
   , toSMT
   ) where
