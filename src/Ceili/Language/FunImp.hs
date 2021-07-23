@@ -98,6 +98,7 @@ instance FunImplLookup (FunImplEnv e) e where
 instance CollectableNames e => CollectableNames (FunImplEnv e) where
   namesIn = namesIn . Map.elems
 
+
 --------------------
 -- Function Calls --
 --------------------
@@ -158,23 +159,24 @@ instance FuelTank (FunEvalContext e) where
   getFuel = fiec_fuel
   setFuel (FunEvalContext _ impls) fuel = FunEvalContext fuel impls
 
-instance EvalImp (FunEvalContext e) e => EvalImp (FunEvalContext e) (ImpCall e) where
-  evalImp ctx st (ImpCall cid args assignees) =
-    let impls = fiec_impls ctx
-    in case Map.lookup cid impls of
-      Nothing -> do
-        log_e $ "No implementation for " ++ cid
-        return Nothing
-      Just (FunImpl params body returns) -> do
-        let eargs = map (evalAExp st) args
-        let inputSt = Map.fromList $ zip params eargs
-        result <- evalImp ctx inputSt body
-        return $ case result of
-          Nothing -> Nothing
-          Just outputSt -> let
-            retVals = map (\r -> Map.findWithDefault 0 r outputSt) returns
-            assignments = Map.fromList $ zip assignees retVals
-            in Just $ Map.union assignments st
+instance FunImplLookup (FunEvalContext e) e where
+  lookupFunImpl (FunEvalContext _ impls) name = case Map.lookup name impls of
+    Nothing   -> throwError $ "No implementation for " ++ name
+    Just impl -> return impl
+
+instance (FunImplLookup c e, EvalImp c e) => EvalImp c (ImpCall e) where
+  evalImp ctx st (ImpCall cid args assignees) = do
+    (FunImpl params body returns) <- (lookupFunImpl ctx cid :: Ceili (FunImpl e))
+    let eargs = map (evalAExp st) args
+    let inputSt = Map.fromList $ zip params eargs
+    result <- evalImp ctx inputSt body
+    return $ case result of
+      Nothing -> Nothing
+      Just outputSt ->
+        let
+          retVals = map (\r -> Map.findWithDefault 0 r outputSt) returns
+          assignments = Map.fromList $ zip assignees retVals
+        in Just $ Map.union assignments st
 
 -- TODO: Evaluating a function call should cost fuel to prevent infinite recursion.
 
