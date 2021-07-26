@@ -62,4 +62,4 @@ test_loopInvGen = let
           ]
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
-  in runAndAssertEquivalent (mkEnv body) expected $ loopInvGen impBackwardPT () (bexpToAssertion cond) body post tests
+  in runAndAssertEquivalent (defaultEnv body) expected $ loopInvGen impBackwardPT () (bexpToAssertion cond) body post tests

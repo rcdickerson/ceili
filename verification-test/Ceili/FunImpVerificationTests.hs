@@ -60,7 +60,7 @@ mkTestStartStates cnames =
 runForward expectedResult progFile pre post = do
   funEnv <- readAndParse progFile
   let prog = fimpl_body $ funEnv Map.! "main"
-  assertRunsWithoutErrors (mkEnv prog) (impForwardPT funEnv prog pre) $
+  assertRunsWithoutErrors (defaultEnv prog) (impForwardPT funEnv prog pre) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult expectedResult smtResult
@@ -72,7 +72,7 @@ runBackward expectedResult progFile pre post = do
         let evalCtx = FunEvalContext (Fuel 1000) funEnv
         progWithTests <- populateTestStates evalCtx (mkTestStartStates prog) prog
         impBackwardPT funEnv progWithTests post
-  assertRunsWithoutErrors (mkEnv prog) findWP $
+  assertRunsWithoutErrors (defaultEnv prog) findWP $
     \result -> do
       smtResult <- SMT.checkValid $ Imp pre result
       assertSMTResult expectedResult smtResult

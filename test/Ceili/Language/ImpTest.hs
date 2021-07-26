@@ -28,7 +28,7 @@ assertion assertionStr = case parseAssertion assertionStr of
 
 runAndAssertEqual :: (Eq t, Show t) => t -> Ceili t -> IO ()
 runAndAssertEqual expected task = do
-  result <- runCeili defaultEnv task
+  result <- runCeili emptyEnv task
   case result of
     Left err     -> assertFailure err
     Right actual -> assertEqual expected actual
@@ -42,7 +42,7 @@ test_forwardPT = do
         \ (exists ((y!2 int)) \
         \   (and (= y 1)      \
         \        (and (exists ((x!1 int)) (and (= x 5) true)) (not (< x 0))))))"
-  actualEither <- runCeili (mkEnv prog1) $ impForwardPT () prog1 ATrue
+  actualEither <- runCeili (defaultEnv prog1) $ impForwardPT () prog1 ATrue
   case actualEither of
     Left err     -> assertFailure $ show err
     Right actual -> assertEqual expected actual
@@ -53,7 +53,7 @@ test_backwardPT = do
         "(and \
         \  (=> (< 5 0) (= 0 1)) \
         \  (=> (not (< 5 0)) (= 1 1)))"
-  actualEither <- runCeili (mkEnv prog1) $ impBackwardPT () prog1 post
+  actualEither <- runCeili (defaultEnv prog1) $ impBackwardPT () prog1 post
   case actualEither of
     Left err     -> assertFailure $ show err
     Right actual -> assertEqual expected actual

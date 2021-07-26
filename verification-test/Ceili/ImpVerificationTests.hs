@@ -59,7 +59,7 @@ mkTestStartStates cnames =
 
 runForward expectedResult progFile pre post = do
   prog <- readAndParse progFile
-  assertRunsWithoutErrors (mkEnv prog) (impForwardPT () prog pre) $
+  assertRunsWithoutErrors (defaultEnv prog) (impForwardPT () prog pre) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult expectedResult smtResult
@@ -69,7 +69,7 @@ runBackward expectedResult progFile pre post = do
   let findWP = do
         progWithTests <- populateTestStates (Fuel 1000) (mkTestStartStates prog) prog
         impBackwardPT () progWithTests post
-  assertRunsWithoutErrors (mkEnv prog) findWP $
+  assertRunsWithoutErrors (defaultEnv prog) findWP $
     \result -> do
       smtResult <- SMT.checkValid $ Imp pre result
       assertSMTResult expectedResult smtResult

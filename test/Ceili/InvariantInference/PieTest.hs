@@ -16,7 +16,7 @@ import qualified Data.Vector as Vector
 
 runAndAssertEquivalent :: Assertion -> Ceili (Maybe Assertion) -> IO ()
 runAndAssertEquivalent expected actual = do
-  result <- runCeili defaultEnv actual
+  result <- runCeili emptyEnv actual
   case result of
     Left err         -> assertFailure err
     Right mAssertion ->
@@ -169,7 +169,7 @@ test_boolLearn = let
                              ]
   expected = And [ Lt (Num 0) x, Lt x (Num 5)]
   in do
-    result <- runCeili defaultEnv $ boolLearn features posFV negFV
+    result <- runCeili emptyEnv $ boolLearn features posFV negFV
     case result of
       Left err     -> assertFailure err
       Right actual -> assertEqual expected actual
@@ -204,7 +204,7 @@ test_boolLearn_largerClause = let
                  , Not $ Lt x (Num 0)
                  ]
   in do
-    result <- runCeili defaultEnv $ boolLearn features posFV negFV
+    result <- runCeili emptyEnv $ boolLearn features posFV negFV
     case result of
       Left err     -> assertFailure err
       Right actual -> assertEqual expected actual

@@ -9,6 +9,7 @@ module Ceili.CeiliEnv
   , checkValidB
   , checkValidWithLog
   , defaultEnv
+  , emptyEnv
   , envFreshen
   , findCounterexample
   , log_d
@@ -34,20 +35,39 @@ data Env = Env { env_logger_debug :: LogType
                , env_nextFreshIds :: NextFreshIds
                , env_smtTimeoutMs :: Integer }
 
-data LogLevel = LogLevelNone
-              | LogLevelDebug
-              | LogLevelError
+data LogLevel = LogLevelDebug
               | LogLevelInfo
+              | LogLevelError
+              | LogLevelNone
 
-mkEnv :: CollectableNames n => n -> Env
-mkEnv names = Env { env_logger_debug = LogNone -- LogStdout defaultBufSize
-                  , env_logger_error = LogStderr defaultBufSize
-                  , env_logger_info  = LogStdout defaultBufSize
-                  , env_nextFreshIds = buildFreshIds [names]
-                  , env_smtTimeoutMs = 2000 }
+mkEnv :: CollectableNames n => LogLevel -> n -> Integer -> Env
+mkEnv minLogLevel names smtTimeoutMs =
+  Env { env_logger_debug = mkDebugLogType minLogLevel
+      , env_logger_info  = mkInfoLogType minLogLevel
+      , env_logger_error = mkErrorLogType minLogLevel
+      , env_nextFreshIds = buildFreshIds [names]
+      , env_smtTimeoutMs = smtTimeoutMs }
 
-defaultEnv :: Env
-defaultEnv = mkEnv ([] :: [Assertion])
+defaultEnv :: CollectableNames n => n -> Env
+defaultEnv names = mkEnv LogLevelInfo names 2000
+
+emptyEnv :: Env
+emptyEnv = defaultEnv ([] :: [Assertion])
+
+mkDebugLogType :: LogLevel -> LogType
+mkDebugLogType minLevel = case minLevel of
+  LogLevelDebug -> LogStdout defaultBufSize
+  _ -> LogNone
+
+mkInfoLogType :: LogLevel -> LogType
+mkInfoLogType minLevel = case minLevel of
+  LogLevelDebug -> LogStdout defaultBufSize
+  _ -> LogNone
+
+mkErrorLogType :: LogLevel -> LogType
+mkErrorLogType minLevel = case minLevel of
+  LogLevelDebug -> LogStdout defaultBufSize
+  _ -> LogNone
 
 type Ceili a = StateT Env (ExceptT String IO) a
 
