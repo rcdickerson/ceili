@@ -481,7 +481,7 @@ instance (CollectableNames e, ImpForwardPT c e) => ImpForwardPT c (ImpWhile e) w
       Just inv -> return inv
     bodyInvSP <- impForwardPT ctx body inv
     log_d "Checking loop invariant verification conditions..."
-    vcCheck <- checkValid $ A.And [ A.Imp pre inv, A.Imp bodyInvSP inv ]
+    vcCheck <- checkValidB $ A.And [ A.Imp pre inv, A.Imp bodyInvSP inv ]
     if vcCheck
       then do log_d "Loop invariant verification conditions passed."
               return $ A.And [A.Not cond, inv]

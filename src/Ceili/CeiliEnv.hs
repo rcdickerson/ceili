@@ -2,7 +2,11 @@ module Ceili.CeiliEnv
   ( Env(..)
   , Ceili
   , LogLevel(..)
+  , checkSat
+  , checkSatB
+  , checkSatWithLog
   , checkValid
+  , checkValidB
   , checkValidWithLog
   , defaultEnv
   , envFreshen
@@ -77,20 +81,48 @@ withTimeout t = do
   timeoutMs <- get >>= return . env_smtTimeoutMs
   liftIO $ timeout (1000 * timeoutMs) t
 
-checkValid :: Assertion -> Ceili Bool
+checkValid :: Assertion -> Ceili SMT.ValidResult
 checkValid = checkValidWithLog LogLevelDebug
 
-checkValidWithLog :: LogLevel -> Assertion -> Ceili Bool
+checkValidB :: Assertion -> Ceili Bool
+checkValidB assertion = do
+  valid <- checkValid assertion
+  case valid of
+    SMT.Valid        -> return True
+    SMT.Invalid _    -> return False
+    SMT.ValidUnknown -> return False
+
+checkValidWithLog :: LogLevel -> Assertion -> Ceili SMT.ValidResult
 checkValidWithLog level assertion = do
-  logType <- logTypeAt level
-  result  <- withTimeout $
-             withFastLogger logType $ \logger ->
-             SMT.checkValidFL logger assertion
+  result  <- runWithLog level $ (\logger -> SMT.checkValidFL logger assertion)
   case result of
-    Nothing               -> do log_e "SMT timeout"; return False
-    Just SMT.Valid        -> return True
-    Just (SMT.Invalid _)  -> return False
-    Just SMT.ValidUnknown -> do log_e "SMT unknown"; return False
+    Nothing -> do log_e "SMT timeout"; return SMT.ValidUnknown
+    Just r  -> return r
+
+checkSat :: Assertion -> Ceili SMT.SatResult
+checkSat = checkSatWithLog LogLevelDebug
+
+checkSatB :: Assertion -> Ceili Bool
+checkSatB assertion = do
+  sat <- checkSat assertion
+  case sat of
+    SMT.Sat _      -> return True
+    SMT.Unsat      -> return False
+    SMT.SatUnknown -> return False
+
+checkSatWithLog :: LogLevel -> Assertion -> Ceili SMT.SatResult
+checkSatWithLog level assertion = do
+  result <- runWithLog level $ (\logger -> SMT.checkSatFL logger assertion)
+  case result of
+    Nothing -> do log_e "SMT timeout"; return SMT.SatUnknown
+    Just r  -> return r
+
+runWithLog :: LogLevel -> (FastLogger -> IO a) -> Ceili (Maybe a)
+runWithLog level task = do
+  logType <- logTypeAt level
+  withTimeout $
+    withFastLogger logType $ \logger ->
+    task logger
 
 findCounterexample :: Assertion -> Ceili (Maybe Assertion)
 findCounterexample assertion = do

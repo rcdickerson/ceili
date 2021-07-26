@@ -21,6 +21,7 @@ import Ceili.CeiliEnv
 import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Name
 import Ceili.PTS ( BackwardPT )
+import qualified Ceili.SMT as SMT
 import Ceili.SMTString ( showSMT )
 import Control.Monad ( filterM )
 import Data.Maybe ( isJust )
@@ -46,7 +47,7 @@ createFV :: Vector Feature -> Vector Test -> Ceili FeatureVector
 createFV features tests = Vector.generateM (Vector.length tests) testVec
   where
     testVec n = Vector.generateM (Vector.length features) $ checkFeature (tests!n)
-    checkFeature test n = checkValid $ Imp test (features!n)
+    checkFeature test n = checkValidB $ Imp test (features!n)
 
 -----------
 -- Tests --
@@ -103,7 +104,7 @@ loopInvGen' backwardPT ctx names lits cond body post denylist goodTests = do
            -- On every pass, filter out the non-inductive candidate clauses.
            let nonInductive a = do
                  wp <- backwardPT ctx body a
-                 (return . not) =<< (checkValid $ Imp (And [cond, a]) wp)
+                 (return . not) =<< (checkValidB $ Imp (And [cond, a]) wp)
            nonInductiveConjs <- conjunctsMeeting nonInductive invar
            let denylist' = Set.union denylist $ Set.fromList nonInductiveConjs
            loopInvGen' backwardPT ctx names lits cond body post denylist' goodTests
@@ -112,7 +113,7 @@ loopInvGen' backwardPT ctx names lits cond body post denylist goodTests = do
            log_i $ "[PIE] Attempting to weaken invariant..."
            let validInvar inv = do
                  wp <- backwardPT ctx body inv
-                 checkValid $ And [ Imp (And [Not cond, inv]) post
+                 checkValidB $ And [ Imp (And [Not cond, inv]) post
                                   , Imp (And [cond, inv]) wp ]
            weakenedInvar <- weaken validInvar invar'
            log_i $ "[PIE] Learned invariant: " ++ showSMT weakenedInvar
@@ -145,7 +146,7 @@ makeInductive :: BackwardPT c p
               -> Ceili (Maybe Assertion)
 makeInductive backwardPT ctx names lits cond body invar denylist goodTests = do
   wp <- backwardPT ctx body invar
-  inductive <- checkValid $ Imp (And [invar, cond]) wp
+  inductive <- checkValidB $ Imp (And [invar, cond]) wp
   case inductive of
     True -> return $ Just invar
     False -> do
@@ -426,7 +427,9 @@ featureLearn names lits maxFeatureSize denylist goodTests badTests = let
       []   -> return Nothing
       a:as -> do
         separates <- checkValidWithLog LogLevelNone $ And [ acceptsGoods a, rejectsBads a ]
-        if separates then (return $ Just a) else firstThatSeparates as
+        case separates of
+          SMT.Valid -> return $ Just a
+          _         -> firstThatSeparates as
   featureLearn' size = do
     log_d $ "[PIE] Examining features of length " ++ show size
     let candidates = (LI.linearInequalities names lits size) Set.\\ denylist

@@ -12,6 +12,7 @@ import Ceili.Assertion ( Assertion(..) )
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.LinearInequalities
 import Ceili.Name ( TypedName )
+import qualified Ceili.SMT as SMT
 import Ceili.SMTString ( showSMT )
 import Control.Monad ( filterM )
 import Data.Set ( Set )
@@ -41,7 +42,7 @@ findCandidates :: Set TypedName
 findCandidates names lits size precond = do
   let candidates = linearInequalities names lits size
   log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)
-  filterM (checkValid . Imp precond) $ Set.toList candidates
+  filterM (checkValidB . Imp precond) $ Set.toList candidates
 
 houdini :: [Assertion]
         -> (Assertion -> Ceili Assertion)
@@ -51,7 +52,12 @@ houdini candidates computeSP = do
     ++ (show $ length candidates)
     ++ " candidate clauses."
   sp <- computeSP $ And candidates
-  inductive <- filterM (checkValidWithLog LogLevelNone . Imp sp) candidates
+  let isValid candidate = do
+        valid <- checkValidWithLog LogLevelNone $ Imp sp candidate
+        return $ case valid of
+          SMT.Valid -> True
+          _         -> False
+  inductive <- filterM isValid candidates
   if (length inductive == length candidates)
     then return candidates
     else houdini inductive computeSP

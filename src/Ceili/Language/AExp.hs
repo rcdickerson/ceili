@@ -7,7 +7,7 @@ module Ceili.Language.AExp
 
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.Name
-import Data.Map ( Map )
+import Ceili.State
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -79,8 +79,6 @@ aexpToArith aexp = case aexp of
 -----------------
 -- Interpreter --
 -----------------
-
-type State = Map Name Integer
 
 evalAExp :: State -> AExp -> Integer
 evalAExp st aexp = case aexp of
