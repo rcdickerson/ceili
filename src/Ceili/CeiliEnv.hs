@@ -62,11 +62,14 @@ mkDebugLogType minLevel = case minLevel of
 mkInfoLogType :: LogLevel -> LogType
 mkInfoLogType minLevel = case minLevel of
   LogLevelDebug -> LogStdout defaultBufSize
+  LogLevelInfo  -> LogStdout defaultBufSize
   _ -> LogNone
 
 mkErrorLogType :: LogLevel -> LogType
 mkErrorLogType minLevel = case minLevel of
-  LogLevelDebug -> LogStdout defaultBufSize
+  LogLevelDebug -> LogStderr defaultBufSize
+  LogLevelInfo  -> LogStderr defaultBufSize
+  LogLevelError -> LogStderr defaultBufSize
   _ -> LogNone
 
 type Ceili a = StateT Env (ExceptT String IO) a
