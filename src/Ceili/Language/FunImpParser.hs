@@ -43,12 +43,12 @@ program = do
   getState
 
 statement :: ProgramParser
-statement = parens statement
-        <|> try funCall
+statement = try funCall
         <|> ImpParser.parseIf lexer statement
         <|> ImpParser.parseWhile lexer statement
         <|> ImpParser.parseSkip lexer
         <|> ImpParser.parseAsgn lexer
+        <|> parens statement
 
 funDef :: FunImpParser ()
 funDef = do
