@@ -384,10 +384,10 @@ instance Pretty e => Pretty (ImpSeq e) where
 instance Pretty e => Pretty (ImpIf e) where
   pretty (ImpIf cond tBranch eBranch) =
     pretty "if" <> softline <> pretty cond
-    <> line <> pretty "then"
-    <> softline <> (indent 2 $ pretty tBranch)
+    <> softline <> pretty "then"
+    <> line <> (indent 2 $ pretty tBranch)
     <> line <> pretty "else"
-    <> softline <> (indent 2 $ pretty eBranch)
+    <> line <> (indent 2 $ pretty eBranch)
     <> line <> pretty "endif"
 
 instance Pretty e => Pretty (ImpWhile e) where
