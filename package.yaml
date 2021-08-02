@@ -26,8 +26,10 @@ dependencies:
 - filepath
 - mtl
 - parsec
+- prettyprinter
 - simple-smt
 - split
+- text
 - transformers
 - unbounded-delays
 - vector

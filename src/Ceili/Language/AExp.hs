@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Ceili.Language.AExp
   ( AExp(..)
   , State
@@ -7,9 +9,11 @@ module Ceili.Language.AExp
 
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.Name
+import Ceili.SMTString
 import Ceili.State
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Prettyprinter
 
 data AExp
   = ALit Integer
@@ -90,3 +94,27 @@ evalAExp st aexp = case aexp of
   ADiv lhs rhs -> (evalAExp st lhs) `quot` (evalAExp st rhs)
   AMod lhs rhs -> (evalAExp st lhs) `mod` (evalAExp st rhs)
   APow lhs rhs -> (evalAExp st lhs) ^ (evalAExp st rhs)
+
+
+--------------------
+-- Pretty Printer --
+--------------------
+
+instance Pretty AExp where
+  pretty aexp =
+    case aexp of
+      ALit i -> pretty i
+      AVar name -> pretty $ showSMT name
+      AAdd lhs rhs -> maybeParens lhs <+> "+" <+> maybeParens rhs
+      ASub lhs rhs -> maybeParens lhs <+> "-" <+> maybeParens rhs
+      AMul lhs rhs -> maybeParens lhs <+> "*" <+> maybeParens rhs
+      ADiv lhs rhs -> maybeParens lhs <+> "/" <+> maybeParens rhs
+      AMod lhs rhs -> maybeParens lhs <+> "%" <+> maybeParens rhs
+      APow lhs rhs -> maybeParens lhs <+> "^" <+> maybeParens rhs
+
+maybeParens :: AExp -> Doc ann
+maybeParens aexp =
+  case aexp of
+    ALit _ -> pretty aexp
+    AVar _ -> pretty aexp
+    _      -> parens $ pretty aexp

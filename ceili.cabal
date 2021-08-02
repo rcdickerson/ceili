@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2366dac50047f64ac669894aa31b401d0eb23cefa8fefd14d2685ea75e9c70da
+-- hash: 1e13228da96bbfeeea9a190fb59527f905ff7836cf7144619fd55562eced36ba
 
 name:           ceili
 version:        0.1.0.0
@@ -61,8 +61,10 @@ library
     , filepath
     , mtl
     , parsec
+    , prettyprinter
     , simple-smt
     , split
+    , text
     , transformers
     , unbounded-delays
     , vector
@@ -99,8 +101,10 @@ test-suite ceili-test
     , filepath
     , mtl
     , parsec
+    , prettyprinter
     , simple-smt
     , split
+    , text
     , transformers
     , unbounded-delays
     , vector
@@ -127,8 +131,10 @@ test-suite ceili-verification-test
     , filepath
     , mtl
     , parsec
+    , prettyprinter
     , simple-smt
     , split
+    , text
     , transformers
     , unbounded-delays
     , vector

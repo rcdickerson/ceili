@@ -16,6 +16,7 @@ import Data.ByteString ( ByteString )
 import qualified Data.ByteString.Char8 as S8
 import Data.Set  ( Set )
 import qualified Data.Set as Set
+import Prettyprinter
 
 
 ----------------------------
@@ -256,3 +257,14 @@ instance FreeVariables Assertion where
     Gte  a1 a2   -> Set.union (freeVars a1) (freeVars a2)
     Forall ids a -> Set.difference (freeVars a) (Set.fromList ids)
     Exists ids a -> Set.difference (freeVars a) (Set.fromList ids)
+
+
+--------------------
+-- Pretty Printer --
+--------------------
+
+instance Pretty Arith where
+  pretty = pretty . S8.unpack . toSMT
+
+instance Pretty Assertion where
+  pretty = pretty . S8.unpack . toSMT

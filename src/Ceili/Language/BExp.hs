@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Ceili.Language.BExp
   ( BExp(..)
   , State
@@ -9,7 +11,9 @@ import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
 import Ceili.Name
-import qualified Data.Set  as Set
+import qualified Data.Set as Set
+import Prettyprinter
+
 
 -------------------------
 -- Boolean Expressions --
@@ -102,3 +106,30 @@ evalBExp st bexp = case bexp of
   BGe  b1 b2 -> (evalAExp st b1) >= (evalAExp st b2)
   BGt  b1 b2 -> (evalAExp st b1) >  (evalAExp st b2)
   BLt  b1 b2 -> (evalAExp st b1) <  (evalAExp st b2)
+
+
+--------------------
+-- Pretty Printer --
+--------------------
+
+instance Pretty BExp where
+  pretty bexp =
+    case bexp of
+      BTrue      -> "true"
+      BFalse     -> "false"
+      BNot b     -> "!" <> maybeParens b
+      BAnd b1 b2 -> pretty b1 <+> "&&" <+> pretty b2
+      BOr  b1 b2 -> pretty b1 <+> "||" <+> pretty b2
+      BEq  b1 b2 -> pretty b1 <+> "==" <+> pretty b2
+      BNe  b1 b2 -> pretty b1 <+> "!=" <+> pretty b2
+      BLe  b1 b2 -> pretty b1 <+> "<=" <+> pretty b2
+      BGe  b1 b2 -> pretty b1 <+> ">=" <+> pretty b2
+      BGt  b1 b2 -> pretty b1 <+> ">"  <+> pretty b2
+      BLt  b1 b2 -> pretty b1 <+> "<"  <+> pretty b2
+
+maybeParens :: BExp -> Doc ann
+maybeParens bexp =
+  case bexp of
+    BTrue  -> pretty bexp
+    BFalse -> pretty bexp
+    _      -> parens $ pretty bexp

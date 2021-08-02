@@ -60,6 +60,7 @@ import Data.Maybe ( catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import Prettyprinter
 
 
 --------------
@@ -365,6 +366,38 @@ instance (PopulateTestStates c (f e), PopulateTestStates c (g e)) =>
 
 instance (FuelTank f) => PopulateTestStates f ImpProgram where
   populateTestStates fuel sts (In f) = populateTestStates fuel sts f >>= return . In
+
+
+--------------------
+-- Pretty Printer --
+--------------------
+
+instance Pretty (ImpSkip e) where
+  pretty _ = pretty "skip"
+
+instance Pretty (ImpAsgn e) where
+  pretty (ImpAsgn lhs rhs) = pretty lhs <+> pretty ":=" <+> pretty rhs
+
+instance Pretty e => Pretty (ImpSeq e) where
+  pretty (ImpSeq stmts) = vsep $ map (\stmt -> pretty stmt <> semi) stmts
+
+instance Pretty e => Pretty (ImpIf e) where
+  pretty (ImpIf cond tBranch eBranch) =
+    pretty "if" <> softline <> pretty cond
+    <> line <> pretty "then"
+    <> softline <> (indent 2 $ pretty tBranch)
+    <> line <> pretty "else"
+    <> softline <> (indent 2 $ pretty eBranch)
+    <> line <> pretty "endif"
+
+instance Pretty e => Pretty (ImpWhile e) where
+  pretty (ImpWhile cond body _) =
+    pretty "while" <> softline <> pretty cond
+    <> line <> (indent 2 $ pretty body)
+    <> line <> pretty "end"
+
+instance Pretty ImpProgram where
+  pretty (In p) = pretty p
 
 
 --------------------------------------------

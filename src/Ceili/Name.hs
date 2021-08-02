@@ -37,6 +37,7 @@ import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Set ( Set )
 import qualified Data.Set as Set
+import Prettyprinter
 
 
 -----------
@@ -61,6 +62,10 @@ instance FreshableNames Name where
 instance SMTString Name where
   toSMT (Name h 0) = S8.pack h
   toSMT (Name h i) = (S8.pack h) <> "!" <> (S8.pack $ show i)
+
+instance Pretty Name where
+  pretty (Name h 0) = pretty h
+  pretty (Name h i) = pretty h <+> "!" <> pretty i
 
 liftHandleMap :: (String -> String) -> Name -> Name
 liftHandleMap f (Name h i) = Name (f h) i
@@ -260,6 +265,9 @@ instance FreshableNames TypedName where
 
 instance SMTString TypedName where
   toSMT (TypedName name ty) = "(" <> toSMT name <> " " <> toSMT ty <> ")"
+
+instance Pretty TypedName where
+  pretty (TypedName name _) = pretty name
 
 withType :: Type -> [Name] -> [TypedName]
 withType typ = map (\n -> TypedName n typ)

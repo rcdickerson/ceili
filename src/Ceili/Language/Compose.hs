@@ -11,6 +11,8 @@ module Ceili.Language.Compose
     (:<:)(..)
   ) where
 
+import Prettyprinter
+
 infixr 6 :+:
 
 data (f :+: g) e = Inl (f e) | Inr (g e)
@@ -24,6 +26,10 @@ instance (Eq (f e), Eq (g e)) => Eq ((f :+: g) e) where
 instance (Show (f e), Show (g e)) => Show ((f :+: g) e) where
   show (Inl f) = show f
   show (Inr g) = show g
+
+instance (Pretty (f e), Pretty (g e)) => Pretty ((f :+: g) e) where
+  pretty (Inl f) = pretty f
+  pretty (Inr g) = pretty g
 
 class (Functor sub, Functor sup) => sub :<: sup where
   inj :: sub a -> sup a

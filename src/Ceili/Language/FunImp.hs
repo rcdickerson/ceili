@@ -39,6 +39,8 @@ module Ceili.Language.FunImp
   , impWhile
   , impWhileWithMeta
   , inject
+  , prettyArgs
+  , prettyAssignees
   ) where
 
 import Ceili.Assertion
@@ -52,6 +54,7 @@ import Control.Monad ( foldM )
 import Data.Map ( Map )
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Prettyprinter
 
 
 ------------------------------
@@ -197,6 +200,33 @@ instance PopulateTestStates (FunEvalContext FunImpProgram) FunImpProgram where
 
 -- TODO: PTSes don't handle recursion. Add detection to fail gracefully instead of
 -- spinning forever.
+
+
+--------------------
+-- Pretty Printer --
+--------------------
+
+instance Pretty (ImpCall e) where
+  pretty (ImpCall callId args assignees) =
+    prettyAssignees assignees <+> pretty ":=" <+> pretty callId <> prettyArgs args
+
+prettyAssignees :: Pretty a => [a] -> Doc ann
+prettyAssignees assignees =
+  case assignees of
+    []     -> pretty "??"
+    (x:[]) -> pretty x
+    _      -> encloseSep lparen rparen comma (map pretty assignees)
+
+prettyArgs :: Pretty a => [a] -> Doc ann
+prettyArgs args =
+  case args of
+    []     -> pretty "()"
+    (x:[]) -> parens $ pretty x
+    _      -> encloseSep lparen rparen comma (map pretty args)
+
+
+instance Pretty FunImpProgram where
+  pretty (In p) = pretty p
 
 
 ----------------------------------
