@@ -11,6 +11,7 @@ import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
 import Ceili.Name
+import Ceili.Literal
 import qualified Data.Set as Set
 import Prettyprinter
 
@@ -47,6 +48,9 @@ instance CollectableNames BExp where
     BLt  lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     BGt  lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
 
+instance CollectableTypedNames BExp where
+  typedNamesIn bexp = Set.map (\n -> TypedName n Int) $ namesIn bexp
+
 instance MappableNames BExp where
   mapNames _ BTrue        = BTrue
   mapNames _ BFalse       = BFalse
@@ -73,6 +77,20 @@ instance FreshableNames BExp where
     BGe  a1 a2 -> freshenBinop BGe  a1 a2
     BLt  a1 a2 -> freshenBinop BLt  a1 a2
     BGt  a1 a2 -> freshenBinop BGt  a1 a2
+
+instance CollectableLiterals BExp where
+  litsIn bexp = case bexp of
+    BTrue        -> Set.empty
+    BFalse       -> Set.empty
+    BNot b       -> litsIn b
+    BAnd b1  b2  -> Set.union (litsIn b1)  (litsIn b2)
+    BOr  b1  b2  -> Set.union (litsIn b1)  (litsIn b2)
+    BEq  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    BNe  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    BLe  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    BGe  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    BLt  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    BGt  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
 
 bexpToAssertion :: BExp -> Assertion
 bexpToAssertion bexp = case bexp of

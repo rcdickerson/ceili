@@ -5,9 +5,16 @@ module Ceili.TestUtil
   , assertHasSameItems
   , assertImplies
   , assertValid
+  , envFunImp
+  , envImp
   ) where
 
 import Ceili.Assertion
+import Ceili.CeiliEnv
+import Ceili.Language.FunImp
+import Ceili.Language.Imp
+import Ceili.Literal
+import Ceili.Name
 import qualified Ceili.SMT as SMT
 import Ceili.SMTString ( showSMT )
 import qualified Data.Map as Map
@@ -15,6 +22,12 @@ import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
 import System.Log.FastLogger
 import Test.Framework
+
+envImp :: ImpProgram -> Env
+envImp prog = defaultEnv (typedNamesIn prog) (litsIn prog)
+
+envFunImp :: FunImpProgram -> Env
+envFunImp prog = defaultEnv (typedNamesIn prog) (litsIn prog)
 
 assertValid :: Assertion -> IO ()
 assertValid assertion = do

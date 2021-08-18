@@ -1,10 +1,15 @@
 module Ceili.InvariantInference.LinearInequalities
-  ( linearInequalities
+  ( MemoizedInequalities
+  , emptyMemoization
+  , getLinearInequalities
+  , linearInequalities
   ) where
 
 import Ceili.Assertion ( Arith(..), Assertion(..) )
 import qualified Ceili.InvariantInference.CollectionUtil as Collection
 import Ceili.Name ( TypedName )
+import Data.Map ( Map )
+import qualified Data.Map as Map
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
@@ -66,3 +71,26 @@ simplifyMult arith =
 
 simplifyMults :: [Arith] -> [Arith]
 simplifyMults ariths = filter (/= Num 0) $ map simplifyMult ariths
+
+
+-----------------
+-- Memoization --
+-----------------
+
+type MemoizedInequalities = Map (Set TypedName, Set Integer, Int) (Set Assertion)
+
+emptyMemoization :: MemoizedInequalities
+emptyMemoization = Map.empty
+
+getLinearInequalities :: MemoizedInequalities
+                      -> Set TypedName
+                      -> Set Integer
+                      -> Int
+                      -> (MemoizedInequalities, Set Assertion)
+getLinearInequalities memoization names lits size =
+  case Map.lookup (names, lits, size) memoization of
+    Just enumeration -> (memoization, enumeration)
+    Nothing -> (memoization', enumeration)
+      where
+        enumeration = linearInequalities names lits size
+        memoization' = Map.insert (names, lits, size) enumeration memoization

@@ -46,14 +46,8 @@ import qualified Ceili.InvariantInference.Pie as Pie
 import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
 import Ceili.Language.BExp ( BExp(..), bexpToAssertion, evalBExp )
 import Ceili.Language.Compose
-import Ceili.Name ( CollectableNames(..)
-                  , FreshableNames(..)
-                  , MappableNames(..)
-                  , Name(..)
-                  , TypedName(..)
-                  , Type(..)
-                  , freshen )
-import qualified Ceili.Name as Name
+import Ceili.Literal
+import Ceili.Name
 import Ceili.SMTString ( showSMT )
 import Data.List ( partition )
 import Data.Maybe ( catMaybes, fromMaybe )
@@ -179,13 +173,37 @@ instance CollectableNames e => CollectableNames (ImpSeq e) where
 
 instance CollectableNames e => CollectableNames (ImpIf e) where
   namesIn (ImpIf cond bThen bElse) = Set.unions
-    [ (namesIn cond), (namesIn bThen), (namesIn bElse)]
+    [namesIn cond, namesIn bThen, namesIn bElse]
 
 instance CollectableNames e => CollectableNames (ImpWhile e) where
   namesIn (ImpWhile cond body _) = Set.union (namesIn cond) (namesIn body)
 
 instance CollectableNames ImpProgram
   where namesIn (In p) = namesIn p
+
+
+---------------------------
+-- CollectableTypedNames --
+---------------------------
+
+instance CollectableTypedNames (ImpSkip e) where
+  typedNamesIn ImpSkip = Set.empty
+
+instance CollectableTypedNames (ImpAsgn e) where
+  typedNamesIn (ImpAsgn var aexp) = Set.insert (TypedName var Int) $ typedNamesIn aexp
+
+instance CollectableTypedNames e => CollectableTypedNames (ImpSeq e) where
+  typedNamesIn (ImpSeq stmts) = typedNamesIn stmts
+
+instance CollectableTypedNames e => CollectableTypedNames (ImpIf e) where
+  typedNamesIn (ImpIf cond bThen bElse) = Set.unions
+    [typedNamesIn cond, typedNamesIn bThen, typedNamesIn bElse]
+
+instance CollectableTypedNames e => CollectableTypedNames (ImpWhile e) where
+  typedNamesIn (ImpWhile cond body _) = Set.union (typedNamesIn cond) (typedNamesIn body)
+
+instance CollectableTypedNames ImpProgram
+  where typedNamesIn (In p) = typedNamesIn p
 
 
 -------------------
@@ -244,6 +262,30 @@ instance FreshableNames e => FreshableNames (ImpWhile e) where
 
 instance FreshableNames ImpProgram where
   freshen (In p) = return . In =<< freshen p
+
+
+-------------------------
+-- CollectableLiterals --
+-------------------------
+
+instance CollectableLiterals (ImpSkip e) where
+  litsIn ImpSkip = Set.empty
+
+instance CollectableLiterals (ImpAsgn e) where
+  litsIn (ImpAsgn _ rhs) = litsIn rhs
+
+instance CollectableLiterals e => CollectableLiterals (ImpSeq e) where
+  litsIn (ImpSeq stmts) = litsIn stmts
+
+instance CollectableLiterals e => CollectableLiterals (ImpIf e) where
+  litsIn (ImpIf cond tBranch eBranch) = Set.unions
+    [litsIn cond, litsIn tBranch, litsIn eBranch]
+
+instance (CollectableLiterals e) => CollectableLiterals (ImpWhile e) where
+  litsIn (ImpWhile cond body _) = Set.union (litsIn cond) (litsIn body)
+
+instance CollectableLiterals ImpProgram where
+  litsIn (In f) = litsIn f
 
 
 -----------------
@@ -412,7 +454,7 @@ instance ImpBackwardPT c (ImpSkip e) where
 
 instance ImpBackwardPT c (ImpAsgn e) where
   impBackwardPT _ (ImpAsgn lhs rhs) post =
-    return $ A.subArith (TypedName lhs Name.Int)
+    return $ A.subArith (TypedName lhs Int)
                         (aexpToArith rhs)
                         post
 
@@ -435,11 +477,11 @@ instance ImpBackwardPT c e => ImpBackwardPT c (ImpIf e) where
 instance (CollectableNames e, ImpBackwardPT c e) => ImpBackwardPT c (ImpWhile e) where
   impBackwardPT ctx (ImpWhile condB body meta) post = let
     cond          = bexpToAssertion condB
-    varSet        = Set.unions [Name.namesIn condB, Name.namesIn body]
+    varSet        = Set.unions [namesIn condB, namesIn body]
     vars          = Set.toList varSet
-    freshMapping  = snd $ Name.buildFreshMap (Name.buildFreshIds vars) vars
+    freshMapping  = snd $ buildFreshMap (buildFreshIds vars) vars
     (orig, fresh) = unzip $ Map.toList freshMapping
-    freshen       = Name.substituteAll orig fresh
+    freshen       = substituteAll orig fresh
     qNames        = Set.toList $ namesInToInt fresh
     in do
       inv <- case (iwm_invariant meta) of
@@ -485,10 +527,10 @@ instance ImpForwardPT c (ImpAsgn e) where
   impForwardPT _ (ImpAsgn lhs rhs) pre = do
     lhs' <- envFreshen lhs
     let
-      subPre   = Name.substitute lhs lhs' pre
+      subPre   = substitute lhs lhs' pre
       rhsArith = aexpToArith rhs
-      ilhs     = TypedName lhs  Name.Int
-      ilhs'    = TypedName lhs' Name.Int
+      ilhs     = TypedName lhs  Int
+      ilhs'    = TypedName lhs' Int
       subRhs   = A.subArith ilhs (A.Var ilhs') rhsArith
     return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
 

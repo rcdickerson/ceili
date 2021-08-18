@@ -50,6 +50,7 @@ import Ceili.Language.BExp
 import Ceili.Language.Compose
 import Ceili.Language.Imp
 import Ceili.Name
+import Ceili.Literal
 import Control.Monad ( foldM )
 import Data.Map ( Map )
 import qualified Data.Map as Map
@@ -72,6 +73,12 @@ instance CollectableNames e => CollectableNames (FunImpl e) where
                , namesIn body
                , Set.fromList returns ]
 
+instance CollectableTypedNames e => CollectableTypedNames (FunImpl e) where
+  typedNamesIn (FunImpl params body returns) =
+    Set.unions [ Set.fromList $ map (\n -> TypedName n Int) params
+               , typedNamesIn body
+               , Set.fromList $ map (\n -> TypedName n Int) returns ]
+
 instance MappableNames e => MappableNames (FunImpl e) where
   mapNames f (FunImpl params body returns) =
     FunImpl (map f params) (mapNames f body) (map f returns)
@@ -82,6 +89,9 @@ instance FreshableNames e => FreshableNames (FunImpl e) where
     body'    <- freshen body
     returns' <- freshen returns
     return $ FunImpl params' body' returns'
+
+instance CollectableLiterals e => CollectableLiterals (FunImpl e) where
+  litsIn (FunImpl _ body _) = litsIn body
 
 
 ------------------------------------------
@@ -115,6 +125,10 @@ instance CollectableNames (ImpCall e) where
   namesIn (ImpCall _ args assignees) =
     Set.union (namesIn args) (namesIn assignees)
 
+instance CollectableTypedNames (ImpCall e) where
+  typedNamesIn (ImpCall _ args assignees) =
+    Set.union (typedNamesIn args) (Set.map (\n -> TypedName n Int) $ namesIn assignees)
+
 instance FreshableNames (ImpCall e) where
   freshen (ImpCall cid args assignees) = do
     args'      <- freshen args
@@ -124,6 +138,9 @@ instance FreshableNames (ImpCall e) where
 instance MappableNames (ImpCall e) where
   mapNames f (ImpCall cid args assignees) =
     ImpCall cid (map (mapNames f) args) (map f assignees)
+
+instance CollectableLiterals (ImpCall e) where
+  litsIn (ImpCall _ args _) = litsIn args
 
 
 ---------------------
@@ -140,11 +157,17 @@ type FunImpProgram = ImpExpr ( ImpCall
 instance CollectableNames FunImpProgram where
   namesIn (In f) = namesIn f
 
+instance CollectableTypedNames FunImpProgram where
+  typedNamesIn (In f) = typedNamesIn f
+
 instance MappableNames FunImpProgram where
   mapNames func (In f) = In $ mapNames func f
 
 instance FreshableNames FunImpProgram where
   freshen (In f) = return . In =<< freshen f
+
+instance CollectableLiterals FunImpProgram where
+  litsIn (In f) = litsIn f
 
 impCall :: (ImpCall :<: f) => CallId -> [AExp] -> [Name] -> ImpExpr f
 impCall cid args assignees = inject $ ImpCall cid args assignees

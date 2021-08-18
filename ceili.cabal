@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1e13228da96bbfeeea9a190fb59527f905ff7836cf7144619fd55562eced36ba
+-- hash: e2f84f8bcf723d05da9feaedf1e12b6b48bac3f05898b775d77aab423fde65c6
 
 name:           ceili
 version:        0.1.0.0
@@ -44,6 +44,7 @@ library
       Ceili.Language.FunImpParser
       Ceili.Language.Imp
       Ceili.Language.ImpParser
+      Ceili.Literal
       Ceili.Name
       Ceili.PTS
       Ceili.SMT

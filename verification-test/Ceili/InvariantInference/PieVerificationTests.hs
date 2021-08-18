@@ -9,9 +9,17 @@ import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
 import Ceili.Language.BExp ( bexpToAssertion )
 import Ceili.Language.Imp
+import Ceili.Literal
 import Ceili.Name
 import qualified Ceili.SMT as SMT
+import qualified Data.Set as Set
 import System.Log.FastLogger
+
+env :: ImpProgram -> Assertion -> Env
+env prog post = defaultEnv names lits
+  where
+    names = Set.union (typedNamesIn prog) (typedNamesIn post)
+    lits  = Set.union (litsIn prog) (litsIn post)
 
 assertEquivalent :: Assertion -> Assertion -> IO ()
 assertEquivalent a1 a2 = do
@@ -62,4 +70,5 @@ test_loopInvGen = let
           ]
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
-  in runAndAssertEquivalent (defaultEnv body) expected $ loopInvGen impBackwardPT () (bexpToAssertion cond) body post tests
+  in runAndAssertEquivalent (env body post) expected
+     $ loopInvGen impBackwardPT () (bexpToAssertion cond) body post tests

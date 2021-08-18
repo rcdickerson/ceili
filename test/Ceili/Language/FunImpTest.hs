@@ -9,6 +9,7 @@ import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.Language.FunImp
 import Ceili.Name
+import Ceili.TestUtil
 import qualified Data.Map as Map
 
 
@@ -46,25 +47,25 @@ prog2 = impSeq [ impCall "add2" [AVar x] [x]
 
 
 test_backwardPT = do
-  result <- runCeili (defaultEnv prog1) $ impBackwardPT implEnv prog1 $ Eq (Var $ TypedName x Int) (Num 2)
+  result <- runCeili (envFunImp prog1) $ impBackwardPT implEnv prog1 $ Eq (Var $ TypedName x Int) (Num 2)
   case result of
     Left err     -> assertFailure $ show err
     Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 0)
 
 test_backwardPTNested = do
-  result <- runCeili (defaultEnv prog2) $ impBackwardPT implEnv prog2 $ Eq (Var $ TypedName x Int) (Num 3)
+  result <- runCeili (envFunImp prog2) $ impBackwardPT implEnv prog2 $ Eq (Var $ TypedName x Int) (Num 3)
   case result of
     Left err     -> assertFailure $ show err
     Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 0)
 
 test_forwardPT = do
-  result <- runCeili (defaultEnv prog1) $ impForwardPT implEnv prog1 $ Eq (Var $ TypedName x Int) (Num 0)
+  result <- runCeili (envFunImp prog1) $ impForwardPT implEnv prog1 $ Eq (Var $ TypedName x Int) (Num 0)
   case result of
     Left err     -> assertFailure $ show err
     Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 2)
 
 test_forwardPTNested = do
-  result <- runCeili (defaultEnv prog2) $ impForwardPT implEnv prog2 $ Eq (Var $ TypedName x Int) (Num 0)
+  result <- runCeili (envFunImp prog2) $ impForwardPT implEnv prog2 $ Eq (Var $ TypedName x Int) (Num 0)
   case result of
     Left err     -> assertFailure $ show err
     Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 3)

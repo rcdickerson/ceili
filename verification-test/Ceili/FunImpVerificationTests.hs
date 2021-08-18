@@ -7,6 +7,7 @@ import Ceili.Assertion ( Arith(..), Assertion(..) )
 import Ceili.CeiliEnv
 import Ceili.Language.FunImp
 import Ceili.Language.FunImpParser
+import Ceili.Literal
 import Ceili.Name
 import qualified Ceili.SMT as SMT
 import qualified Data.Map as Map
@@ -14,6 +15,9 @@ import qualified Data.Set as Set
 import System.FilePath
 
 data ExpectResult = ExpectSuccess | ExpectFailure
+
+envFromProg :: FunImpProgram -> Env
+envFromProg prog = defaultEnv (typedNamesIn prog) (litsIn prog)
 
 assertSMTResult expected result =
   case (expected, result) of
@@ -60,7 +64,7 @@ mkTestStartStates cnames =
 runForward expectedResult progFile pre post = do
   funEnv <- readAndParse progFile
   let prog = fimpl_body $ funEnv Map.! "main"
-  assertRunsWithoutErrors (defaultEnv prog) (impForwardPT funEnv prog pre) $
+  assertRunsWithoutErrors (envFromProg prog) (impForwardPT funEnv prog pre) $
     \result -> do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult expectedResult smtResult
@@ -72,7 +76,7 @@ runBackward expectedResult progFile pre post = do
         let evalCtx = FunEvalContext (Fuel 1000) funEnv
         progWithTests <- populateTestStates evalCtx (mkTestStartStates prog) prog
         impBackwardPT funEnv progWithTests post
-  assertRunsWithoutErrors (defaultEnv prog) findWP $
+  assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do
       smtResult <- SMT.checkValid $ Imp pre result
       assertSMTResult expectedResult smtResult

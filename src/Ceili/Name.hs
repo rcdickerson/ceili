@@ -5,6 +5,7 @@
 
 module Ceili.Name
   ( CollectableNames(..)
+  , CollectableTypedNames(..)
   , FreshableNames(..)
   , Freshener
   , Handle
@@ -198,6 +199,7 @@ buildFreshMap nextIds names =
     (_, mapping') = runState replacements mapping
   in (fr_nextIds mapping', fr_replacements mapping')
 
+
 -------------------
 -- Collect Names --
 -------------------
@@ -248,12 +250,26 @@ instance SMTString Type where
     Bool -> "Bool"
     Int  -> "Int"
 
-data TypedName = TypedName { tnName :: Name
-                           , tnType :: Type
+data TypedName = TypedName { tn_name :: Name
+                           , tn_type :: Type
                            } deriving (Show, Eq, Ord)
+
+class CollectableTypedNames a where
+  typedNamesIn :: a -> Set TypedName
+
+instance (CollectableTypedNames (f e), CollectableTypedNames (g e))
+          => CollectableTypedNames ((f :+: g) e) where
+  typedNamesIn (Inl f) = typedNamesIn f
+  typedNamesIn (Inr g) = typedNamesIn g
+
+instance CollectableTypedNames a => CollectableTypedNames [a] where
+  typedNamesIn as = Set.unions $ map typedNamesIn as
 
 instance CollectableNames TypedName where
   namesIn (TypedName name _) = Set.singleton name
+
+instance CollectableTypedNames TypedName where
+  typedNamesIn tn = Set.singleton tn
 
 instance MappableNames TypedName where
   mapNames f (TypedName name ty) = TypedName (f name) ty

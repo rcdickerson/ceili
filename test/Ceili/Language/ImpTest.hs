@@ -7,6 +7,7 @@ import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.Language.Imp
 import Ceili.Name
+import Ceili.TestUtil
 import qualified Data.Map as Map
 
 name n = Name n 0
@@ -42,7 +43,7 @@ test_forwardPT = do
         \ (exists ((y!2 int)) \
         \   (and (= y 1)      \
         \        (and (exists ((x!1 int)) (and (= x 5) true)) (not (< x 0))))))"
-  actualEither <- runCeili (defaultEnv prog1) $ impForwardPT () prog1 ATrue
+  actualEither <- runCeili (envImp prog1) $ impForwardPT () prog1 ATrue
   case actualEither of
     Left err     -> assertFailure $ show err
     Right actual -> assertEqual expected actual
@@ -53,7 +54,7 @@ test_backwardPT = do
         "(and \
         \  (=> (< 5 0) (= 0 1)) \
         \  (=> (not (< 5 0)) (= 1 1)))"
-  actualEither <- runCeili (defaultEnv prog1) $ impBackwardPT () prog1 post
+  actualEither <- runCeili (envImp prog1) $ impBackwardPT () prog1 post
   case actualEither of
     Left err     -> assertFailure $ show err
     Right actual -> assertEqual expected actual

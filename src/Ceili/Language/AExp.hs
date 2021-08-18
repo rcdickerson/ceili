@@ -9,6 +9,7 @@ module Ceili.Language.AExp
 
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.Name
+import Ceili.Literal
 import Ceili.SMTString
 import Ceili.State
 import qualified Data.Map as Map
@@ -37,6 +38,9 @@ instance CollectableNames AExp where
     AMod lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     APow lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
 
+instance CollectableTypedNames AExp where
+  typedNamesIn aexp = Set.map (\n -> TypedName n Int) $ namesIn aexp
+
 instance MappableNames AExp where
   mapNames f aexp = case aexp of
     ALit i       -> ALit i
@@ -58,6 +62,17 @@ instance FreshableNames AExp where
     ADiv lhs rhs -> freshenBinop ADiv lhs rhs
     AMod lhs rhs -> freshenBinop AMod lhs rhs
     APow lhs rhs -> freshenBinop APow lhs rhs
+
+instance CollectableLiterals AExp where
+  litsIn aexp = case aexp of
+    ALit i -> Set.singleton i
+    AVar _ -> Set.empty
+    AAdd lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    ASub lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    AMul lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    ADiv lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    AMod lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
+    APow lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
 
 aexpToArith :: AExp -> A.Arith
 aexpToArith aexp = case aexp of

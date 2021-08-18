@@ -12,6 +12,8 @@ module Ceili.CeiliEnv
   , emptyEnv
   , envFreshen
   , findCounterexample
+  , getProgLits
+  , getProgNames
   , log_d
   , log_e
   , log_i
@@ -21,18 +23,22 @@ module Ceili.CeiliEnv
   ) where
 
 import Ceili.Assertion ( Assertion(..), parseAssertion )
-import Ceili.Name ( CollectableNames, FreshableNames, NextFreshIds, buildFreshIds, runFreshen )
+import Ceili.Name
 import qualified Ceili.SMT as SMT
 import Control.Concurrent.Timeout ( timeout )
 import Control.Monad.IO.Class ( liftIO )
 import Control.Monad.Except ( ExceptT, runExceptT, throwError )
 import Control.Monad.Trans.State ( StateT, evalStateT, get, put )
+import Data.Set ( Set )
+import qualified Data.Set as Set
 import System.Log.FastLogger
 
 data Env = Env { env_logger_debug :: LogType
                , env_logger_error :: LogType
                , env_logger_info  :: LogType
                , env_nextFreshIds :: NextFreshIds
+               , env_progNames    :: Set TypedName
+               , env_progLits     :: Set Integer
                , env_smtTimeoutMs :: Integer }
 
 data LogLevel = LogLevelDebug
@@ -40,19 +46,26 @@ data LogLevel = LogLevelDebug
               | LogLevelError
               | LogLevelNone
 
-mkEnv :: CollectableNames n => LogLevel -> n -> Integer -> Env
-mkEnv minLogLevel names smtTimeoutMs =
+type Ceili = StateT Env (ExceptT String IO)
+
+runCeili :: Env -> Ceili a -> IO (Either String a)
+runCeili env task = runExceptT (evalStateT task env)
+
+mkEnv :: LogLevel -> Set TypedName -> Set Integer -> Integer -> Env
+mkEnv minLogLevel names lits smtTimeoutMs =
   Env { env_logger_debug = mkDebugLogType minLogLevel
       , env_logger_info  = mkInfoLogType minLogLevel
       , env_logger_error = mkErrorLogType minLogLevel
-      , env_nextFreshIds = buildFreshIds [names]
+      , env_nextFreshIds = buildFreshIds names
+      , env_progNames    = names
+      , env_progLits     = lits
       , env_smtTimeoutMs = smtTimeoutMs }
 
-defaultEnv :: CollectableNames n => n -> Env
-defaultEnv names = mkEnv LogLevelInfo names 2000
+defaultEnv :: Set TypedName -> Set Integer -> Env
+defaultEnv names lits = mkEnv LogLevelInfo names lits 2000
 
 emptyEnv :: Env
-emptyEnv = defaultEnv ([] :: [Assertion])
+emptyEnv = defaultEnv Set.empty Set.empty
 
 mkDebugLogType :: LogLevel -> LogType
 mkDebugLogType minLevel = case minLevel of
@@ -71,11 +84,6 @@ mkErrorLogType minLevel = case minLevel of
   LogLevelInfo  -> LogStderr defaultBufSize
   LogLevelError -> LogStderr defaultBufSize
   _ -> LogNone
-
-type Ceili a = StateT Env (ExceptT String IO) a
-
-runCeili :: Env -> Ceili a -> IO (Either String a)
-runCeili env task = runExceptT (evalStateT task env)
 
 logAt :: ToLogStr m => (Env -> LogType) -> m -> Ceili ()
 logAt logger message = do
@@ -166,7 +174,17 @@ findCounterexample assertion = do
 
 envFreshen :: FreshableNames a => a -> Ceili a
 envFreshen a = do
-  Env logd loge logi nextIds smtTimeout <- get
+  Env logd loge logi nextIds names lits smtTimeout <- get
   let (nextIds', a') = runFreshen nextIds a
-  put $ Env logd loge logi nextIds' smtTimeout
+  put $ Env logd loge logi nextIds' names lits smtTimeout
   return a'
+
+getProgNames :: Ceili (Set TypedName)
+getProgNames = do
+  Env _ _ _ _ names _ _ <- get
+  return names
+
+getProgLits :: Ceili (Set Integer)
+getProgLits = do
+  Env _ _ _ _ _ lits _ <- get
+  return lits

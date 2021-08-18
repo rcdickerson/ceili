@@ -10,6 +10,7 @@ module Ceili.Assertion.AssertionLanguage
   , toSMT
   ) where
 
+import Ceili.Literal
 import Ceili.Name
 import Ceili.SMTString ( SMTString(..) )
 import Data.ByteString ( ByteString )
@@ -58,6 +59,9 @@ instance CollectableNames Arith where
     Mod a1 a2 -> Set.union (namesIn a1) (namesIn a2)
     Pow a1 a2 -> Set.union (namesIn a1) (namesIn a2)
 
+instance CollectableTypedNames Arith where
+  typedNamesIn arith = Set.map (\n -> TypedName n Int) $ namesIn arith
+
 instance FreshableNames Arith where
   freshen arith = case arith of
     Num i     -> return $ Num i
@@ -69,10 +73,21 @@ instance FreshableNames Arith where
     Mod a1 a2 -> freshenBinop Mod a1 a2
     Pow a1 a2 -> freshenBinop Pow a1 a2
 
+instance CollectableLiterals Arith where
+  litsIn arith = case arith of
+    Num i     -> Set.singleton i
+    Var _     -> Set.empty
+    Add as    -> Set.unions $ map litsIn as
+    Sub as    -> Set.unions $ map litsIn as
+    Mul as    -> Set.unions $ map litsIn as
+    Div a1 a2 -> Set.union (litsIn a1) (litsIn a2)
+    Mod a1 a2 -> Set.union (litsIn a1) (litsIn a2)
+    Pow a1 a2 -> Set.union (litsIn a1) (litsIn a2)
+
 instance SMTString Arith where
   toSMT arith = case arith of
     Num n -> S8.pack $ show n
-    Var tname -> toSMT $ tnName tname
+    Var tname -> toSMT $ tn_name tname
     Add as    -> toSexp "+"   as
     Sub as    -> toSexp "-"   as
     Mul as    -> toSexp "*"   as
@@ -135,6 +150,9 @@ instance CollectableNames Assertion where
     Forall vs a -> Set.unions $ (namesIn a):(map namesIn vs)
     Exists vs a -> Set.unions $ (namesIn a):(map namesIn vs)
 
+instance CollectableTypedNames Assertion where
+  typedNamesIn assertion = Set.map (\n -> TypedName n Int) $ namesIn assertion
+
 instance FreshableNames Assertion where
   freshen assertion = case assertion of
     ATrue       -> return ATrue
@@ -157,11 +175,28 @@ instance FreshableNames Assertion where
         a'  <- freshen a
         return $ op vs' a'
 
+instance CollectableLiterals Assertion where
+  litsIn assertion = case assertion of
+    ATrue      -> Set.empty
+    AFalse     -> Set.empty
+    Atom _     -> Set.empty
+    Not a      -> litsIn a
+    And as     -> Set.unions $ map litsIn as
+    Or as      -> Set.unions $ map litsIn as
+    Imp a1 a2  -> Set.union (litsIn a1) (litsIn a2)
+    Eq a1 a2   -> Set.union (litsIn a1) (litsIn a2)
+    Lt a1 a2   -> Set.union (litsIn a1) (litsIn a2)
+    Gt a1 a2   -> Set.union (litsIn a1) (litsIn a2)
+    Lte a1 a2  -> Set.union (litsIn a1) (litsIn a2)
+    Gte a1 a2  -> Set.union (litsIn a1) (litsIn a2)
+    Forall _ a -> litsIn a
+    Exists _ a -> litsIn a
+
 instance SMTString Assertion where
   toSMT assertion = case assertion of
     ATrue           -> "true"
     AFalse          -> "false"
-    Atom tname      -> toSMT $ tnName tname
+    Atom tname      -> toSMT $ tn_name tname
     Not a           -> toSexp "not" [a]
     And as          -> toSexp "and" as
     Or as           -> toSexp "or" as

@@ -9,6 +9,7 @@ import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
 import Ceili.Name
+import Control.Monad.Trans.State ( evalStateT )
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Vector ( Vector )
@@ -169,7 +170,8 @@ test_boolLearn = let
                              ]
   expected = And [ Lt (Num 0) x, Lt x (Num 5)]
   in do
-    result <- runCeili emptyEnv $ boolLearn features posFV negFV
+    let task = boolLearn features posFV negFV
+    result <- runCeili emptyEnv $ evalStateT task $ PieEnv Set.empty Set.empty Map.empty
     case result of
       Left err     -> assertFailure err
       Right actual -> assertEqual expected actual
@@ -204,7 +206,8 @@ test_boolLearn_largerClause = let
                  , Not $ Lt x (Num 0)
                  ]
   in do
-    result <- runCeili emptyEnv $ boolLearn features posFV negFV
+    let task = boolLearn features posFV negFV
+    result <- runCeili emptyEnv $ evalStateT task $ PieEnv Set.empty Set.empty Map.empty
     case result of
       Left err     -> assertFailure err
       Right actual -> assertEqual expected actual
@@ -219,7 +222,8 @@ test_featureLearn = let
   badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
                               , Eq (Var x) (Num $ -5) ]
   expected  = Lt (Num 0) (Var x)
-  in runAndAssertEquivalent expected $ featureLearn names lits 1 Set.empty goodTests badTests
+  task = featureLearn 1 Set.empty goodTests badTests
+  in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits Map.empty
 
 
 test_pie = let
@@ -231,7 +235,8 @@ test_pie = let
   badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
                               , Eq (Var x) (Num $ -5) ]
   expected  = Lt (Num 0) (Var x)
-  in runAndAssertEquivalent expected $ pie names lits Vector.empty Set.empty goodTests badTests
+  task = pie Vector.empty Set.empty goodTests badTests
+  in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits Map.empty
 
 --
 -- NB: Full LoopInvGen tests are expensive and are thus located in the verification-test suite.
