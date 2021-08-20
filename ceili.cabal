@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e2f84f8bcf723d05da9feaedf1e12b6b48bac3f05898b775d77aab423fde65c6
+-- hash: 680c58c3e8ab62d1e85f966cc341bc6e72550ad1de4382aaaf60933c4213b8e3
 
 name:           ceili
 version:        0.1.0.0
@@ -50,6 +50,7 @@ library
       Ceili.SMT
       Ceili.SMTString
       Ceili.State
+      Ceili.StatePredicate
   other-modules:
       Paths_ceili
   hs-source-dirs:

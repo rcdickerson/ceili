@@ -22,7 +22,8 @@ import Ceili.CeiliEnv
 import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Name
 import Ceili.PTS ( BackwardPT )
-import qualified Ceili.SMT as SMT
+import Ceili.State
+import Ceili.StatePredicate
 import Ceili.SMTString ( showSMT )
 import Control.Monad ( filterM )
 import Control.Monad.Trans ( lift )
@@ -47,17 +48,10 @@ type Feature = Assertion
 ---------------------
 type FeatureVector = Vector (Vector Bool)
 
-createFV :: Vector Feature -> Vector Test -> PieM FeatureVector
-createFV features tests = Vector.generateM (Vector.length tests) testVec
-  where
-    testVec n = Vector.generateM (Vector.length features) $ checkFeature (tests!n)
-    checkFeature test n = lift $ checkValidB $ Imp test (features!n)
-
-
------------
--- Tests --
------------
-type Test = Assertion -- TODO: Allow other kinds of tests.
+createFV :: Vector Feature -> Vector State -> FeatureVector
+createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
+                          Vector.generate (Vector.length features) $ \featureIdx ->
+                          testState (features!featureIdx) (tests!testIdx)
 
 
 -----------------
@@ -95,7 +89,7 @@ loopInvGen :: (CollectableNames p) =>
            -> Assertion
            -> p
            -> Assertion
-           -> [Test]
+           -> [State]
            -> Ceili (Maybe Assertion)
 loopInvGen backwardPT ctx cond body post goodTests = do
   log_i $ "[PIE] Beginning invariant inference with PIE"
@@ -110,7 +104,7 @@ loopInvGen' :: BackwardPT c p
             -> p
             -> Assertion
             -> Set Assertion
-            -> [Test]
+            -> [State]
             -> PieM (Maybe Assertion)
 loopInvGen' backwardPT ctx cond body post denylist goodTests = do
   plog_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
@@ -132,7 +126,7 @@ loopInvGen' backwardPT ctx cond body post denylist goodTests = do
                  wp <- backwardPT ctx body a
                  (return . not) =<< (checkValidB $ Imp (And [cond, a]) wp)
            nonInductiveConjs <- conjunctsMeeting nonInductive invar
-           let denylist' = Set.union denylist $ Set.fromList nonInductiveConjs
+           let denylist' = Set.union denylist $ Set.fromList $ concat $ map cnfAtoms nonInductiveConjs
            loopInvGen' backwardPT ctx cond body post denylist' goodTests
          Just invar' -> do
            plog_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
@@ -166,7 +160,7 @@ makeInductive :: BackwardPT c p
               -> p
               -> Assertion
               -> Set Assertion
-              -> [Test]
+              -> [State]
               -> PieM (Maybe Assertion)
 makeInductive backwardPT ctx cond body invar denylist goodTests = do
   wp <- lift $ backwardPT ctx body invar
@@ -199,6 +193,13 @@ weaken sufficient assertion = do
   conj' <- paretoOptimize (sufficient . conjoin) conj
   return $ conjoin conj'
 
+cnfAtoms :: Assertion -> [Assertion]
+cnfAtoms assertion = case assertion of
+  And as -> concat $ map cnfAtoms as
+  Or as  -> concat $ map cnfAtoms as
+  _      -> [assertion]
+
+
 conjuncts :: Assertion -> [Assertion]
 conjuncts assertion = case assertion of
   And as -> concat $ map conjuncts as
@@ -230,14 +231,14 @@ paretoOptimize sufficient assertions =
 
 vPreGen :: Assertion
         -> Set Assertion
-        -> Vector Test
-        -> Vector Test
+        -> Vector State
+        -> Vector State
         -> PieM (Maybe Assertion)
 vPreGen goal denylist goodTests badTests = do
   plog_d $ "[PIE] Starting vPreGen pass"
-  plog_d $ "[PIE]   goal: " ++ showSMT goal
-  plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map showSMT goodTests)
-  plog_d $ "[PIE]   bad tests: " ++ (show $ Vector.map showSMT badTests)
+  plog_d $ "[PIE]   goal: "       ++ showSMT goal
+  plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
+  plog_d $ "[PIE]   bad tests: "  ++ (show $ Vector.map (show . pretty) badTests)
   mCandidate <- pie Vector.empty denylist goodTests badTests
   case mCandidate of
     Nothing -> return Nothing
@@ -250,8 +251,22 @@ vPreGen goal denylist goodTests badTests = do
           return $ Just candidate
         Just counter -> do
           plog_d $ "[PIE] vPreGen found counterexample: " ++ showSMT counter
-          vPreGen goal denylist goodTests $ Vector.cons counter badTests
+          vPreGen goal denylist goodTests $ Vector.cons (extractState counter) badTests
 
+-- TODO: This is fragile.
+extractState :: Assertion -> State
+extractState assertion = case assertion of
+  Eq lhs rhs -> Map.fromList [(extractName lhs, extractInt rhs)]
+  And as     -> Map.unions $ map extractState as
+  _          -> error $ "Unexpected assertion: " ++ show assertion
+  where
+    extractName arith = case arith of
+      Var (TypedName name _) -> name
+      _ -> error $ "Unexpected arith (expected name): " ++ show arith
+    extractInt arith = case arith of
+      Num n -> n
+      Sub ((Num x):[]) -> -1 * x
+      _ -> error $ "Unexpected arith (expected int): " ++ show arith
 
 ---------
 -- PIE --
@@ -259,12 +274,12 @@ vPreGen goal denylist goodTests badTests = do
 
 pie :: Vector Feature
     -> Set Assertion
-    -> Vector Test
-    -> Vector Test
+    -> Vector State
+    -> Vector State
     -> PieM (Maybe Assertion)
 pie features denylist goodTests badTests = do
-  posFV <- createFV features goodTests
-  negFV <- createFV features badTests
+  let posFV = createFV features goodTests
+  let negFV = createFV features badTests
   case getConflict posFV negFV goodTests badTests of
     Just (xGood, xBad) -> do
       mNewFeature <- findAugmentingFeature denylist xGood xBad
@@ -275,9 +290,9 @@ pie features denylist goodTests badTests = do
 
 getConflict :: FeatureVector
             -> FeatureVector
-            -> Vector Test
-            -> Vector Test
-            -> Maybe (Vector Test, Vector Test)
+            -> Vector State
+            -> Vector State
+            -> Maybe (Vector State, Vector State)
 getConflict posFV negFV goodTests badTests = do
   conflict <- findConflict posFV negFV
   let posIndices = Vector.findIndices (== conflict) posFV
@@ -288,8 +303,8 @@ findConflict :: FeatureVector -> FeatureVector -> Maybe (Vector Bool)
 findConflict posFV negFV = Vector.find (\pos -> isJust $ Vector.find (== pos) negFV) posFV
 
 findAugmentingFeature :: Set Assertion
-                      -> Vector Test
-                      -> Vector Test
+                      -> Vector State
+                      -> Vector State
                       -> PieM (Maybe Assertion)
 findAugmentingFeature denylist xGood xBad = do
   let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
@@ -366,6 +381,7 @@ falsifies clause vec = and $ map conflicts $ Map.toList clause
 -- Boolean Expression Learning --
 ---------------------------------
 
+
 boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> PieM Assertion
 boolLearn features posFV negFV = do
   plog_d "[PIE] Learning boolean formula"
@@ -426,32 +442,31 @@ greedySetCover clauses fv =
 
 featureLearn :: Int
              -> Set Assertion
-             -> Vector Test
-             -> Vector Test
+             -> Vector State
+             -> Vector State
              -> PieM (Maybe Assertion)
 featureLearn maxFeatureSize denylist goodTests badTests = let
-  acceptsGoods assertion = And $ Vector.toList $
-      Vector.map (\test -> Imp test assertion) goodTests
-  rejectsBads assertion = And $ Vector.toList $
-      Vector.map (\test -> Imp test $ Not assertion) badTests
+  acceptsGoods assertion = and $ Vector.toList $
+      Vector.map (\test -> testState assertion test) goodTests
+  rejectsBads assertion = and $ Vector.toList $
+      Vector.map (\test -> testState (Not assertion) test) badTests
   firstThatSeparates assertions =
     case assertions of
-      []   -> return Nothing
+      []   -> Nothing
       a:as -> do
-        separates <- lift $ checkValidWithLog LogLevelNone $ And [ acceptsGoods a, rejectsBads a ]
-        case separates of
-          SMT.Valid -> return $ Just a
-          _         -> firstThatSeparates as
+        if acceptsGoods a && rejectsBads a
+          then Just a
+          else firstThatSeparates as
   featureLearn' size = do
     plog_d $ "[PIE] Examining features of length " ++ show size
     ineqs <- linearInequalities size
     let candidates = ineqs \\ denylist
-    mFeature <- firstThatSeparates $ Set.toList candidates
+    let mFeature = firstThatSeparates $ Set.toList candidates
     case mFeature of
       Nothing -> if size >= maxFeatureSize then return Nothing else featureLearn' (size + 1)
       Just feature -> return $ Just feature
   in do
     plog_d   "[PIE] Beginning feature learning pass"
-    plog_d $ "[PIE]   Good tests: " ++ (show $ Vector.map showSMT goodTests)
-    plog_d $ "[PIE]   Bad tests: " ++ (show $ Vector.map showSMT badTests)
+    plog_d $ "[PIE]   Good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
+    plog_d $ "[PIE]   Bad tests: " ++ (show $ Vector.map (show . pretty) badTests)
     featureLearn' 1

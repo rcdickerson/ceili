@@ -217,10 +217,10 @@ test_featureLearn = let
   x         = TypedName (Name "x" 0) Int
   names     = Set.singleton x
   lits      = Set.empty
-  goodTests = Vector.fromList [ Eq (Var x) (Num 1)
-                              , Eq (Var x) (Num 5) ]
-  badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
-                              , Eq (Var x) (Num $ -5) ]
+  goodTests = Vector.fromList [ Map.fromList [(Name "x" 0, 1)]
+                              , Map.fromList [(Name "x" 0, 5)] ]
+  badTests  = Vector.fromList [ Map.fromList [(Name "x" 0, -1)]
+                              , Map.fromList [(Name "x" 0, -5)] ]
   expected  = Lt (Num 0) (Var x)
   task = featureLearn 1 Set.empty goodTests badTests
   in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits Map.empty
@@ -230,10 +230,10 @@ test_pie = let
   x         = TypedName (Name "x" 0) Int
   names     = Set.singleton x
   lits      = Set.empty
-  goodTests = Vector.fromList [ Eq (Var x) (Num 1)
-                              , Eq (Var x) (Num 5) ]
-  badTests  = Vector.fromList [ Eq (Var x) (Num $ -1)
-                              , Eq (Var x) (Num $ -5) ]
+  goodTests = Vector.fromList [ Map.fromList [(Name "x" 0, 1)]
+                              , Map.fromList [(Name "x" 0, 5)] ]
+  badTests  = Vector.fromList [ Map.fromList [(Name "x" 0, -1)]
+                              , Map.fromList [(Name "x" 0, -5)] ]
   expected  = Lt (Num 0) (Var x)
   task = pie Vector.empty Set.empty goodTests badTests
   in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits Map.empty

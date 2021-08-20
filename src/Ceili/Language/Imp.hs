@@ -99,7 +99,7 @@ type Measure   = A.Arith
 data ImpWhileMetadata =
   ImpWhileMetadata { iwm_invariant  :: Maybe Invariant
                    , iwm_measure    :: Maybe Measure
-                   , iwm_testStates :: Maybe (Set Assertion)
+                   , iwm_testStates :: Maybe (Set State)
                    } deriving (Eq, Ord, Show)
 
 emptyWhileMetadata :: ImpWhileMetadata
@@ -391,15 +391,11 @@ instance PopulateTestStates c e => PopulateTestStates c (ImpIf e) where
 instance (FuelTank f, PopulateTestStates f e) => PopulateTestStates f (ImpWhile e) where
   populateTestStates fuel sts (ImpWhile cond body meta) = do
     let ImpWhileMetadata inv meas tests = meta
+    let tests' = Set.union (Set.fromList sts) (fromMaybe Set.empty tests)
     let (trueSts, _) = partition (\st -> evalBExp st cond) sts
     body' <- populateTestStates fuel trueSts body
-    -- Convert states to assertions.
-    let
-      toEq (k, v)  = A.Eq (A.Var $ TypedName k Int) (A.Num v)
-      toAssert st  = A.And $ map toEq (Map.toList st)
-      newTests     = Set.fromList $ map toAssert sts
-      tests'       = Just $ Set.union newTests (fromMaybe Set.empty tests)
-    return $ ImpWhile cond body' $ ImpWhileMetadata inv meas tests'
+    return $ ImpWhile cond body' $ ImpWhileMetadata inv meas $
+      if Set.null tests' then Nothing else Just tests'
 
 instance (PopulateTestStates c (f e), PopulateTestStates c (g e)) =>
          PopulateTestStates c ((f :+: g) e) where

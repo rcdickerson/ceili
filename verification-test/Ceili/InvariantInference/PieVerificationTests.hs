@@ -12,6 +12,7 @@ import Ceili.Language.Imp
 import Ceili.Literal
 import Ceili.Name
 import qualified Ceili.SMT as SMT
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 import System.Log.FastLogger
 
@@ -55,18 +56,9 @@ test_loopInvGen = let
                  , impAsgn x $ ASub (AVar x) (ALit 1)]) :: ImpProgram
   post = (Eq (var y) (Sub [var n, var m]))
   -- Loop will always start in a state where x = m and y = n.
-  tests = [ And [ Eq (var x) (Num 0)
-                , Eq (var y) (Num 0)
-                , Eq (var m) (Num 0)
-                , Eq (var n) (Num 0)]
-          , And [ Eq (var x) (Num 5)
-                , Eq (var y) (Num 3)
-                , Eq (var m) (Num 5)
-                , Eq (var n) (Num 3)]
-          , And [ Eq (var x) (Num 3)
-                , Eq (var y) (Num 5)
-                , Eq (var m) (Num 3)
-                , Eq (var n) (Num 5)]
+  tests = [ Map.fromList [(x, 0), (y, 0), (m, 0), (n, 0)]
+          , Map.fromList [(x, 5), (y, 3), (m, 5), (n, 3)]
+          , Map.fromList [(x, 3), (y, 5), (m, 3), (n, 5)]
           ]
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
