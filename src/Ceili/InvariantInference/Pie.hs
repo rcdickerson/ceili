@@ -265,7 +265,6 @@ extractState assertion = case assertion of
       _ -> error $ "Unexpected arith (expected name): " ++ show arith
     extractInt arith = case arith of
       Num n -> n
-      Sub ((Num x):[]) -> -1 * x
       _ -> error $ "Unexpected arith (expected int): " ++ show arith
 
 ---------

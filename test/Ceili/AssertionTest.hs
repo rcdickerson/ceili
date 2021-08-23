@@ -62,3 +62,15 @@ test_subArith = do
   assertEqual ( And [And [Exists [TypedName (Name "z" 5990) Int]
                        (Imp (Eq (Add [Var x0, Num 1]) (Var x1)) AFalse)]])
               ( subArith x0 (Add [ Var x0, Num 1 ]) assertion3' )
+
+test_negativeNumber = do
+  assertEqual (Right $ Eq (Num $ -5) (Var x0))
+              (parseAssertion "(= -5 x)")
+
+test_negativeNumberInParens = do
+  assertEqual (Right $ Eq (Num $ -5) (Var x0))
+              (parseAssertion "(= (-5) x)")
+
+test_negativeNumberInModel = do
+  assertEqual (Right $ Eq (Var x0) (Num $ -1))
+              (parseAssertion "(model (define-fun x () Int (- 1 ) ))")

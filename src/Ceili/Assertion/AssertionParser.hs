@@ -101,7 +101,7 @@ boolVar = do
   return $ A.Atom $ TypedName n Bool
 
 arithLit :: ArithParser
-arithLit = int
+arithLit = int <|> parens int
 
 arithVar :: ArithParser
 arithVar = do
@@ -193,12 +193,12 @@ boolAppN fname fun = do
 arithApp :: ArithParser
 arithApp = do
   char '(' >> whitespace
-  parsedApp <- do aArithAppN "+"   A.Add
-              <|> aArithAppN "-"   A.Sub
-              <|> aArithAppN "*"   A.Mul
-              <|> aArithApp2 "/"   A.Div
-              <|> aArithApp2 "^"   A.Pow
-              <|> aArithApp2 "mod" A.Mod
+  parsedApp <- do aArithAppN        "+"   A.Add
+              <|> aArithAppAtLeast2 "-"   A.Sub
+              <|> aArithAppN        "*"   A.Mul
+              <|> aArithApp2        "/"   A.Div
+              <|> aArithApp2        "^"   A.Pow
+              <|> aArithApp2        "mod" A.Mod
   whitespace
   char ')' >> whitespace
   return parsedApp
@@ -216,6 +216,15 @@ aArithApp2 fname fun = do
     applyFun (a1 : a2 : []) = return $ fun a1 a2
     applyFun _ = fail $ fname ++ " takes two arithmetical arguments"
 
+aArithAppAtLeast2 :: String -> ([Arith] -> Arith) -> ArithParser
+aArithAppAtLeast2 fname fun = do
+  reserved fname >> whitespace
+  operands <- many arithExpr
+  case operands of
+    []   -> fail $ fname ++ " takes at least two arguments"
+    _:[] -> fail $ fname ++ " takes at least two arguments"
+    _ -> return $ fun operands
+
 aArithAppN :: String -> ([Arith] -> Arith) -> ArithParser
 aArithAppN fname fun = do
   reserved fname >> whitespace
@@ -226,7 +235,10 @@ model :: AssertionParser
 model = parens $ do
   reserved "model"
   defs <- many defineFun
-  return $ A.And $ map (\(tn, arith) -> A.Eq (A.Var tn) arith) defs
+  return $ case defs of
+    [] -> A.ATrue
+    (tn, arith):[] -> A.Eq (A.Var tn) arith
+    _ -> A.And $ map (\(tn, arith) -> A.Eq (A.Var tn) arith) defs
 
 defineFun :: Parsec String () (TypedName, Arith)
 defineFun = parens $ do
