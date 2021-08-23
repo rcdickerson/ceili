@@ -21,6 +21,23 @@ import qualified Data.Vector as Vector
 
 type FeatureVector = Vector Bool
 
+-- |Looks for a Boolean combination (in CNF) of the given assertions which
+-- separates the given positive ("good") and negative ("bad") feature vectors.
+-- Each feature vector in the good / bad collection is assumed to have the same
+-- size as the assertion vector, with each feature vector index corresponding to
+-- the valuation of the assertion vector at that index.
+--
+-- For example, if the assertions vector is [X, Y, Z] and the "good" feature
+-- vectors are [ [T, F, F], [F, F, T], [F, T, T] ], then X is True in good
+-- feature vector 0 and False in good feature vectors 1 and 2. The Boolean
+-- combination X \/ Z would be a candidate solution, as it accepts all three
+-- good vectors. Whether or not this is a real solution depends on whether or
+-- not it also rejects all "bad" feature vectors.
+--
+-- This algorithm favors smaller Boolean combinations by searching smaller
+-- formula sizes before moving on to larger ones. If no possible combination of
+-- the given assertions separates the positive and negative samples, the
+-- algorithm will not terminate.
 learnBoolExpr :: Vector Assertion
               -> Vector FeatureVector
               -> Vector FeatureVector

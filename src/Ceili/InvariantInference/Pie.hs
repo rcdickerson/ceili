@@ -5,7 +5,10 @@
 -- http://web.cs.ucla.edu/~todd/research/pldi16.pdf
 
 module Ceili.InvariantInference.Pie
-  ( PieEnv(..)
+  ( FeatureVector
+  , PieEnv(..)
+  , createFV
+  , getConflict
   , pie
   , loopInvGen
   ) where
@@ -34,9 +37,9 @@ import qualified Data.Vector as Vector
 ---------------------
 -- Feature Vectors --
 ---------------------
-type FeatureVector = Vector (Vector Bool)
+type FeatureVector = Vector Bool
 
-createFV :: Vector Assertion -> Vector State -> FeatureVector
+createFV :: Vector Assertion -> Vector State -> Vector FeatureVector
 createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
                           Vector.generate (Vector.length features) $ \featureIdx ->
                           testState (features!featureIdx) (tests!testIdx)
@@ -89,7 +92,6 @@ loopInvGen' :: BackwardPT c p
 loopInvGen' backwardPT ctx cond body post denylist goodTests = do
   plog_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
   mInvar <- vPreGen (Imp (Not cond) post)
-                    denylist
                     (Vector.fromList goodTests)
                     Vector.empty
   lift . log_i $ "[PIE] LoopInvGen initial invariant: " ++ (showSMT mInvar)
@@ -151,7 +153,6 @@ makeInductive backwardPT ctx cond body invar denylist goodTests = do
       plog_i $ "[PIE] LoopInvGen invariant not inductive, attempting to strengthen..."
       inductiveWP <- lift $ backwardPT ctx body invar
       mInvar' <- vPreGen (Imp (And [invar, cond]) inductiveWP)
-                         denylist
                          (Vector.fromList goodTests)
                          Vector.empty
       case mInvar' of
@@ -210,16 +211,15 @@ paretoOptimize sufficient assertions =
 -------------
 
 vPreGen :: Assertion
-        -> Set Assertion
         -> Vector State
         -> Vector State
         -> PieM (Maybe Assertion)
-vPreGen goal denylist goodTests badTests = do
+vPreGen goal goodTests badTests = do
   plog_d $ "[PIE] Starting vPreGen pass"
   plog_d $ "[PIE]   goal: "       ++ showSMT goal
   plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
   plog_d $ "[PIE]   bad tests: "  ++ (show $ Vector.map (show . pretty) badTests)
-  mCandidate <- pie Vector.empty denylist goodTests badTests
+  mCandidate <- pie Vector.empty goodTests badTests
   case mCandidate of
     Nothing -> return Nothing
     Just candidate -> do
@@ -231,7 +231,7 @@ vPreGen goal denylist goodTests badTests = do
           return $ Just candidate
         Just counter -> do
           plog_d $ "[PIE] vPreGen found counterexample: " ++ showSMT counter
-          vPreGen goal denylist goodTests $ Vector.cons (extractState counter) badTests
+          vPreGen goal goodTests $ Vector.cons (extractState counter) badTests
 
 -- TODO: This is fragile.
 extractState :: Assertion -> State
@@ -252,40 +252,38 @@ extractState assertion = case assertion of
 ---------
 
 pie :: Vector Assertion
-    -> Set Assertion
     -> Vector State
     -> Vector State
     -> PieM (Maybe Assertion)
-pie features denylist goodTests badTests = do
+pie features goodTests badTests = do
   let posFV = createFV features goodTests
   let negFV = createFV features badTests
   case getConflict posFV negFV goodTests badTests of
     Just (xGood, xBad) -> do
-      mNewFeature <- findAugmentingFeature denylist xGood xBad
+      mNewFeature <- findAugmentingFeature xGood xBad
       case mNewFeature of
         Nothing         -> return Nothing
-        Just newFeature -> pie (Vector.cons newFeature features) denylist goodTests badTests
+        Just newFeature -> pie (Vector.cons newFeature features) goodTests badTests
     Nothing -> lift $ BL.learnBoolExpr features posFV negFV >>= return . Just
 
-getConflict :: FeatureVector
-            -> FeatureVector
+getConflict :: Vector FeatureVector
+            -> Vector FeatureVector
             -> Vector State
             -> Vector State
             -> Maybe (Vector State, Vector State)
-getConflict posFV negFV goodTests badTests = do
-  conflict <- findConflict posFV negFV
-  let posIndices = Vector.findIndices (== conflict) posFV
-  let negIndices = Vector.findIndices (== conflict) negFV
+getConflict posFVs negFVs goodTests badTests = do
+  conflict <- findConflict posFVs negFVs
+  let posIndices = Vector.findIndices (== conflict) posFVs
+  let negIndices = Vector.findIndices (== conflict) negFVs
   return (Vector.backpermute goodTests posIndices, Vector.backpermute badTests negIndices)
 
-findConflict :: FeatureVector -> FeatureVector -> Maybe (Vector Bool)
-findConflict posFV negFV = Vector.find (\pos -> isJust $ Vector.find (== pos) negFV) posFV
+findConflict :: Vector FeatureVector -> Vector FeatureVector -> Maybe (Vector Bool)
+findConflict posFVs negFVs = Vector.find (\pos -> isJust $ Vector.find (== pos) negFVs) posFVs
 
-findAugmentingFeature :: Set Assertion
-                      -> Vector State
+findAugmentingFeature :: Vector State
                       -> Vector State
                       -> PieM (Maybe Assertion)
-findAugmentingFeature denylist xGood xBad = do
+findAugmentingFeature xGood xBad = do
   let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
   PieEnv names lits <- get
   mNewFeature <- lift $ SL.findSeparator maxFeatureSize (LI.linearInequalities names lits) xGood xBad
@@ -297,9 +295,9 @@ findAugmentingFeature denylist xGood xBad = do
         (1, 1) -> plog_d "[PIE] Single conflict has no separating feature, giving up"
                   >> return Nothing
         (_, 1) -> plog_d "[PIE] Reducing conflict set in good tests" >>
-                  findAugmentingFeature denylist (halve xGood) xBad
+                  findAugmentingFeature (halve xGood) xBad
         _      -> plog_d "[PIE] Reducing conflict set in bad tests" >>
-                  findAugmentingFeature denylist xGood (halve xBad)
+                  findAugmentingFeature xGood (halve xBad)
 
 halve :: Vector a -> Vector a
 halve vec =
