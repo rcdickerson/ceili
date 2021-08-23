@@ -10,7 +10,7 @@ module Ceili.InvariantInference.Houdini
 
 import Ceili.Assertion ( Assertion(..) )
 import Ceili.CeiliEnv
-import Ceili.InvariantInference.LinearInequalities
+import Ceili.FeatureLearning.LinearInequalities
 import Ceili.Name ( TypedName )
 import qualified Ceili.SMT as SMT
 import Ceili.SMTString ( showSMT )

@@ -7,8 +7,8 @@ import Test.Framework
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
+import Ceili.FeatureLearning.LinearInequalities
 import Ceili.FeatureLearning.Separator
-import Ceili.InvariantInference.LinearInequalities
 import Ceili.Name
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -22,7 +22,7 @@ runAndAssertEquivalent expected actual = do
     Right mAssertion ->
       case mAssertion of
         Nothing     -> assertFailure "Expected assertion, got Nothing."
-        Just actual -> assertEquivalent expected actual
+        Just assertion -> assertEquivalent expected assertion
 
 
 test_featureLearn = let

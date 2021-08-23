@@ -1,11 +1,11 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
 
-module Ceili.InvariantInference.LinearInequalitiesTest(htf_thisModulesTests) where
+module Ceili.FeatureLearning.LinearInequalitiesTest(htf_thisModulesTests) where
 
 import Test.Framework
 
 import Ceili.Assertion
-import Ceili.InvariantInference.LinearInequalities
+import Ceili.FeatureLearning.LinearInequalities
 import Ceili.Name
 import qualified Data.Map as Map
 import Data.Set ( Set )

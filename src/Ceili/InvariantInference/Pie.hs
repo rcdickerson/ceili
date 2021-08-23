@@ -12,9 +12,9 @@ module Ceili.InvariantInference.Pie
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
-import qualified Ceili.FeatureLearning.Separator as SL
+import qualified Ceili.FeatureLearning.LinearInequalities as LI
 import qualified Ceili.FeatureLearning.PACBoolean as BL
-import qualified Ceili.InvariantInference.LinearInequalities as LI
+import qualified Ceili.FeatureLearning.Separator as SL
 import Ceili.Name
 import Ceili.PTS ( BackwardPT )
 import Ceili.State

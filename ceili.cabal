@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0e5865aefb454c554c1d0cb8af36989a4cdd43ca3b8e672f7f4c743bdb35c887
+-- hash: 1d8a0dbed8c0b5a2a554b5feead382275aa0891fe3e8963ca9ba593d00129afd
 
 name:           ceili
 version:        0.1.0.0
@@ -31,11 +31,11 @@ library
       Ceili.Assertion.AssertionLanguage
       Ceili.Assertion.AssertionParser
       Ceili.CeiliEnv
+      Ceili.FeatureLearning.LinearInequalities
       Ceili.FeatureLearning.PACBoolean
       Ceili.FeatureLearning.Separator
       Ceili.InvariantInference.CollectionUtil
       Ceili.InvariantInference.Houdini
-      Ceili.InvariantInference.LinearInequalities
       Ceili.InvariantInference.Pie
       Ceili.Language.AExp
       Ceili.Language.AExpParser
@@ -79,10 +79,10 @@ test-suite ceili-test
   main-is: TestMain.hs
   other-modules:
       Ceili.AssertionTest
+      Ceili.FeatureLearning.LinearInequalitiesTest
       Ceili.FeatureLearning.PACBooleanTest
       Ceili.FeatureLearning.SeparatorTest
       Ceili.InvariantInference.CollectionUtilTest
-      Ceili.InvariantInference.LinearInequalitiesTest
       Ceili.InvariantInference.PieTest
       Ceili.Language.AExpParserTest
       Ceili.Language.AExpTest

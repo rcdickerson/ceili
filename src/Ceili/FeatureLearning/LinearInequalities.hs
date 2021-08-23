@@ -1,4 +1,4 @@
-module Ceili.InvariantInference.LinearInequalities
+module Ceili.FeatureLearning.LinearInequalities
   ( linearInequalities
   ) where
 
