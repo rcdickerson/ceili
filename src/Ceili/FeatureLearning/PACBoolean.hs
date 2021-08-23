@@ -1,10 +1,13 @@
 module Ceili.FeatureLearning.PACBoolean
   ( Clause
   , ClauseOccur(..)
+  , FeatureVector
+  , clauseToAssertion
+  , clausesToAssertion
   , clausesWithSize
-  , filterInconsistentClauses
   , greedySetCover
   , learnBoolExpr
+  , removeInconsistentClauses
   ) where
 
 import Ceili.Assertion
@@ -16,23 +19,26 @@ import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
 
 
-type FeatureVector = Vector (Vector Bool)
+type FeatureVector = Vector Bool
 
-learnBoolExpr :: Vector Assertion -> FeatureVector -> FeatureVector -> Ceili Assertion
+learnBoolExpr :: Vector Assertion
+              -> Vector FeatureVector
+              -> Vector FeatureVector
+              -> Ceili Assertion
 learnBoolExpr features posFV negFV = do
   log_d "[PAC] Begin learning boolean expression..."
   boolLearn features posFV negFV 1 Vector.empty
 
 boolLearn :: Vector Assertion
-          -> FeatureVector
-          -> FeatureVector
+          -> Vector FeatureVector
+          -> Vector FeatureVector
           -> Int
           -> Vector Clause
           -> Ceili Assertion
 boolLearn features posFV negFV k prevClauses = do
   log_d $ "[PAC] Loking at clauses of size " ++ show k
   let nextClauses    = clausesWithSize k $ Vector.length features
-  let consistentNext = filterInconsistentClauses nextClauses posFV
+  let consistentNext = removeInconsistentClauses nextClauses posFV
   let clauses        = consistentNext Vector.++ prevClauses
   let mSolution      = greedySetCover clauses negFV
   case mSolution of
@@ -42,27 +48,27 @@ boolLearn features posFV negFV k prevClauses = do
       return $ assertion
     Nothing -> boolLearn features posFV negFV (k + 1) clauses
 
-filterInconsistentClauses :: Vector Clause -> FeatureVector -> Vector Clause
-filterInconsistentClauses clauses fv = Vector.filter consistent clauses
-  where consistent clause = not . or $ map (falsifies clause) $ Vector.toList fv
-
-falsifies :: Clause -> Vector Bool -> Bool
-falsifies clause vec = and $ map conflicts $ Map.toList clause
+-- |Removes all clauses which falsify at least one feature vector in the given vector of FVs.
+removeInconsistentClauses :: Vector Clause -> Vector FeatureVector -> Vector Clause
+removeInconsistentClauses clauses fvs = Vector.filter consistent clauses
   where
-    conflicts (i, occur) = case occur of
-      CPos -> not $ vec!i
-      CNeg -> vec!i
+    falsifiesAny clause = or $ Vector.map (\fv -> falsifies fv clause) fvs
+    consistent = not . falsifiesAny
 
-greedySetCover :: Vector Clause -> FeatureVector -> Maybe (Vector Clause)
-greedySetCover clauses fv =
+-- |Attempts to find the smallest subset of clauses such that each of the given
+-- feature vectors are falsified by at least one clause in the subset.
+greedySetCover :: Vector Clause -> Vector FeatureVector -> Maybe (Vector Clause)
+greedySetCover clauses fvs =
   case Vector.length clauses of
-    0 -> if Vector.length fv == 0 then (Just clauses) else Nothing
+    0 -> if Vector.length fvs == 0 then (Just clauses) else Nothing
     _ ->
       let
         -- Find the clause that eliminates the most feature vectors.
         step curIdx curClause bestSoFar@(bestCount, _, _, _) = let
-          curFv    = Vector.filter (not . falsifies curClause) fv
-          curCount = (Vector.length fv) - (Vector.length curFv)
+          -- curFV: the FVs that are left after the curClause falsifies all it can.
+          -- curCount: how many FVs were falsified by the curClause.
+          curFv    = Vector.filter (\fv -> not $ falsifies fv curClause) fvs
+          curCount = (Vector.length fvs) - (Vector.length curFv)
           in if curCount > bestCount
              then (curCount, curIdx, curClause, curFv)
              else bestSoFar
@@ -83,27 +89,56 @@ greedySetCover clauses fv =
 -- Sparse Clause Representation --
 ----------------------------------
 
+{-|
+  Each Clause represents a disjunction of assertions from some vector V of
+  possible assertions. The disjunctions are stored as a sparse mapping (assertions
+  not present in the disjunction do not appear in the mapping) from an index in V
+  to either CPos or CNeg, indicating whether the assertion appears positively or
+  negatively, respectively.
+
+  For example, given assertions [ x = 0, x < y, y < 5 ], the formula:
+     x = 0 \/ y < 5
+  would be represented:
+    [0 -> CPos, 2 -> CPos]
+
+  and the formula:
+    x >= y \/ y < 5
+  would be represented:
+    [1 -> CNeg, 2 -> CPos]
+-}
+type Clause = Map Int ClauseOccur
 data ClauseOccur = CPos | CNeg
   deriving (Show, Ord, Eq)
-type Clause = Map Int ClauseOccur
 
+-- |Convert a Clause to an Assertion using its backing vector of available assertions.
 clauseToAssertion :: Vector Assertion -> Clause -> Assertion
-clauseToAssertion features clause = let
+clauseToAssertion assertions clause = let
   toAssertion (idx, occur) = case occur of
-    CPos -> features!idx
-    CNeg -> Not $ features!idx
+    CPos -> assertions!idx
+    CNeg -> Not $ assertions!idx
   in case map toAssertion $ Map.toList clause of
        []     -> ATrue
        (a:[]) -> a
        as     -> Or as
 
+-- |Convert a list of Clause to an Assertion using a backing assertion vector.
 clausesToAssertion :: Vector Assertion -> [Clause] -> Assertion
-clausesToAssertion features clauses =
-  case map (clauseToAssertion features) clauses of
+clausesToAssertion assertions clauses =
+  case map (clauseToAssertion assertions) clauses of
     []     -> ATrue
     (a:[]) -> a
     as     -> And as
 
+-- |A Clause falsifies a feature vector when every disjunct in the clause
+-- disagrees with the feature vector.
+falsifies :: FeatureVector -> Clause -> Bool
+falsifies fv clause = and $ map conflicts $ Map.toList clause
+  where
+    conflicts (i, occur) = case occur of
+      CPos -> not $ fv!i
+      CNeg -> fv!i
+
+-- |Enumerate all possible clauses of a given size or smaller.
 clausesWithSize :: Int -> Int -> Vector Clause
 clausesWithSize size numFeatures =
   if numFeatures < 1 then Vector.empty

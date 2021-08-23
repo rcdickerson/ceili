@@ -61,47 +61,56 @@ test_clausesWithSize_2_3 =
                                  ]
   in assertHasSameItems expected $ clausesWithSize 2 3
 
+test_clauseToAssertion =
+  let
+    x = Var $ TypedName (Name "x" 0) Int
+    y = Var $ TypedName (Name "y" 0) Int
+    assertions = Vector.fromList [Eq x (Num 1), Lt x (Num 1), Eq x y, Lte x y]
+    clause = Map.fromList [(0, CPos), (3, CNeg)]
+    expected = Or [Eq x (Num 1), Not $ Lte x y]
+  in assertEqual expected $ clauseToAssertion assertions clause
 
-----------------------
--- Greedy Set Cover --
-----------------------
 
-test_filterInconsistentClauses_simpleAcceptPos = let
+------------------------------------
+-- Filtering Inconsistent Clauses --
+------------------------------------
+
+test_removeInconsistentClauses_simpleAcceptPos = let
   fv       = Vector.fromList [ Vector.fromList [True, True, True] ]
   clauses  = Vector.fromList [ Map.fromAscList [(0, CPos), (1, CPos)] ]
-  in assertHasSameItems clauses $ filterInconsistentClauses clauses fv
+  in assertHasSameItems clauses $ removeInconsistentClauses clauses fv
 
-test_filterInconsistentClauses_simpleAcceptNeg = let
+test_removeInconsistentClauses_simpleAcceptNeg = let
   fv       = Vector.fromList [ Vector.fromList [False, False, False] ]
   clauses  = Vector.fromList [ Map.fromAscList [(0, CNeg), (1, CNeg)] ]
-  in assertHasSameItems clauses $ filterInconsistentClauses clauses fv
+  in assertHasSameItems clauses $ removeInconsistentClauses clauses fv
 
-test_filterInconsistentClauses_simpleAcceptMixed = let
+test_removeInconsistentClauses_simpleAcceptMixed = let
   fv       = Vector.fromList [ Vector.fromList [True, False, False] ]
   clauses  = Vector.fromList [ Map.fromAscList [(0, CPos), (1, CNeg)] ]
-  in assertHasSameItems clauses $ filterInconsistentClauses clauses fv
+  in assertHasSameItems clauses $ removeInconsistentClauses clauses fv
 
-test_filterInconsistentClauses_simpleAcceptOneMatch = let
+test_removeInconsistentClauses_simpleAcceptOneMatch = let
   fv       = Vector.fromList [ Vector.fromList [True, True, True] ]
   clauses  = Vector.fromList [ Map.fromAscList [(0, CPos), (1, CNeg)] ]
-  in assertHasSameItems clauses $ filterInconsistentClauses clauses fv
+  in assertHasSameItems clauses $ removeInconsistentClauses clauses fv
 
-test_filterInconsistentClauses_simpleRejectNeg = let
+test_removeInconsistentClauses_simpleRejectNeg = let
   fv       = Vector.fromList [ Vector.fromList [True, True, True] ]
   clauses  = Vector.fromList [ Map.fromAscList [(0, CNeg), (1, CNeg)] ]
-  in assertHasSameItems Vector.empty $ filterInconsistentClauses clauses fv
+  in assertHasSameItems Vector.empty $ removeInconsistentClauses clauses fv
 
-test_filterInconsistentClauses_simpleRejectPos = let
+test_removeInconsistentClauses_simpleRejectPos = let
   fv       = Vector.fromList [ Vector.fromList [False, False, False] ]
   clauses  = Vector.fromList [ Map.fromAscList [(0, CPos), (1, CPos)] ]
-  in assertHasSameItems Vector.empty $ filterInconsistentClauses clauses fv
+  in assertHasSameItems Vector.empty $ removeInconsistentClauses clauses fv
 
-test_filterInconsistentClauses_simpleRejectMixed = let
+test_removeInconsistentClauses_simpleRejectMixed = let
   fv       = Vector.fromList [ Vector.fromList [True, False, False] ]
   clauses  = Vector.fromList [ Map.fromAscList [(0, CNeg), (1, CPos)] ]
-  in assertHasSameItems Vector.empty $ filterInconsistentClauses clauses fv
+  in assertHasSameItems Vector.empty $ removeInconsistentClauses clauses fv
 
-test_filterInconsistentClauses = let
+test_removeInconsistentClauses = let
   fv       = Vector.fromList [ Vector.fromList [True, False, False]
                              , Vector.fromList [True, True,  False]
                              , Vector.fromList [True, True,  True]
@@ -112,8 +121,12 @@ test_filterInconsistentClauses = let
                              ]
   expected = Vector.fromList [ Map.fromAscList [(0, CPos), (1, CPos)]
                              , Map.fromAscList [(1, CPos), (2, CNeg)]]
-  in assertHasSameItems expected $ filterInconsistentClauses clauses fv
+  in assertHasSameItems expected $ removeInconsistentClauses clauses fv
 
+
+----------------------
+-- Greedy Set Cover --
+----------------------
 
 test_greedySetCover = let
   clauses  = Vector.fromList [ Map.fromAscList [(0, CPos), (1, CPos)] -- Only falsifies the first FV
