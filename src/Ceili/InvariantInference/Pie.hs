@@ -6,19 +6,14 @@
 
 module Ceili.InvariantInference.Pie
   ( PieEnv(..)
-  , Clause
-  , ClauseOccur(..)
-  , boolLearn
-  , clausesWithSize
-  , featureLearn
-  , filterInconsistentClauses
   , pie
-  , greedySetCover
-  , loopInvGen -- TODO: Everything but loopInvGen is exposed for testing. Create .Internal module?
+  , loopInvGen
   ) where
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
+import qualified Ceili.FeatureLearning.Separator as SL
+import qualified Ceili.FeatureLearning.PACBoolean as BL
 import qualified Ceili.InvariantInference.LinearInequalities as LI
 import Ceili.Name
 import Ceili.PTS ( BackwardPT )
@@ -27,20 +22,13 @@ import Ceili.StatePredicate
 import Ceili.SMTString ( showSMT )
 import Control.Monad ( filterM )
 import Control.Monad.Trans ( lift )
-import Control.Monad.Trans.State ( StateT, evalStateT, get, put )
+import Control.Monad.Trans.State ( StateT, evalStateT, get )
 import Data.Maybe ( isJust )
-import Data.Set ( Set, (\\) )
+import Data.Set ( Set )
 import qualified Data.Set as Set
-import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
-
-
---------------
--- Features --
---------------
-type Feature = Assertion
 
 
 ---------------------
@@ -48,7 +36,7 @@ type Feature = Assertion
 ---------------------
 type FeatureVector = Vector (Vector Bool)
 
-createFV :: Vector Feature -> Vector State -> FeatureVector
+createFV :: Vector Assertion -> Vector State -> FeatureVector
 createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
                           Vector.generate (Vector.length features) $ \featureIdx ->
                           testState (features!featureIdx) (tests!testIdx)
@@ -60,17 +48,9 @@ createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
 
 data PieEnv = PieEnv { pe_names       :: Set TypedName
                      , pe_lits        :: Set Integer
-                     , pe_memoizedLIs :: LI.MemoizedInequalities
                      }
 
 type PieM a = StateT PieEnv Ceili a
-
-linearInequalities :: Int -> PieM (Set Assertion)
-linearInequalities size = do
-  PieEnv names lits memoizedLIs <- get
-  let (memoizedLIs', result) = LI.getLinearInequalities memoizedLIs names lits size
-  put $ PieEnv names lits memoizedLIs'
-  return result
 
 plog_i :: String -> PieM ()
 plog_i msg = lift $ log_i msg
@@ -96,7 +76,7 @@ loopInvGen backwardPT ctx cond body post goodTests = do
   names <- getProgNames
   lits <- getProgLits
   let task = loopInvGen' backwardPT ctx cond body post Set.empty goodTests
-  evalStateT task $ PieEnv names lits LI.emptyMemoization
+  evalStateT task $ PieEnv names lits
 
 loopInvGen' :: BackwardPT c p
             -> c
@@ -271,7 +251,7 @@ extractState assertion = case assertion of
 -- PIE --
 ---------
 
-pie :: Vector Feature
+pie :: Vector Assertion
     -> Set Assertion
     -> Vector State
     -> Vector State
@@ -285,7 +265,7 @@ pie features denylist goodTests badTests = do
       case mNewFeature of
         Nothing         -> return Nothing
         Just newFeature -> pie (Vector.cons newFeature features) denylist goodTests badTests
-    Nothing -> boolLearn features posFV negFV >>= return . Just
+    Nothing -> lift $ BL.learnBoolExpr features posFV negFV >>= return . Just
 
 getConflict :: FeatureVector
             -> FeatureVector
@@ -307,7 +287,8 @@ findAugmentingFeature :: Set Assertion
                       -> PieM (Maybe Assertion)
 findAugmentingFeature denylist xGood xBad = do
   let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
-  mNewFeature <- featureLearn maxFeatureSize denylist xGood xBad
+  PieEnv names lits <- get
+  mNewFeature <- lift $ SL.findSeparator maxFeatureSize (LI.linearInequalities names lits) xGood xBad
   case mNewFeature of
     Just newFeature -> do
       return $ Just newFeature
@@ -324,148 +305,3 @@ halve :: Vector a -> Vector a
 halve vec =
   let len = Vector.length vec
   in Vector.drop (max (len `quot` 2) 1) vec
-
-
--------------
--- Clauses --
--------------
-
-data ClauseOccur = CPos | CNeg
-  deriving (Show, Ord, Eq)
-type Clause = Map Int ClauseOccur
-
-clauseToAssertion :: Vector Feature -> Clause -> Assertion
-clauseToAssertion features clause = let
-  toAssertion (idx, occur) = case occur of
-    CPos -> features!idx
-    CNeg -> Not $ features!idx
-  in case map toAssertion $ Map.toList clause of
-       []     -> ATrue
-       (a:[]) -> a
-       as     -> Or as
-
-clausesToAssertion :: Vector Feature -> [Clause] -> Assertion
-clausesToAssertion features clauses =
-  case map (clauseToAssertion features) clauses of
-    []     -> ATrue
-    (a:[]) -> a
-    as     -> And as
-
-clausesWithSize :: Int -> Int -> Vector Clause
-clausesWithSize size numFeatures =
-  if numFeatures < 1 then Vector.empty
-  else if size > numFeatures then Vector.empty
-  else case size of
-    0 -> Vector.empty
-    1 -> let
-      pos = Vector.fromList $ map (\i -> Map.singleton i CPos) [0..numFeatures-1]
-      neg = Vector.fromList $ map (\i -> Map.singleton i CNeg) [0..numFeatures-1]
-      in pos Vector.++ neg
-    _ -> let
-      prev    = clausesWithSize (size - 1) (numFeatures - 1)
-      pos     = Vector.map (\clause -> Map.insert (numFeatures - 1) CPos clause) prev
-      neg     = Vector.map (\clause -> Map.insert (numFeatures - 1) CNeg clause) prev
-      smaller = clausesWithSize size $ numFeatures - 1
-      in pos Vector.++ neg Vector.++ smaller
-
-falsifies :: Clause -> Vector Bool -> Bool
-falsifies clause vec = and $ map conflicts $ Map.toList clause
-  where
-    conflicts (i, occur) = case occur of
-      CPos -> not $ vec!i
-      CNeg -> vec!i
-
-
----------------------------------
--- Boolean Expression Learning --
----------------------------------
-
-
-boolLearn :: Vector Feature -> FeatureVector -> FeatureVector -> PieM Assertion
-boolLearn features posFV negFV = do
-  plog_d "[PIE] Learning boolean formula"
-  boolLearn' features posFV negFV 1 Vector.empty
-
-boolLearn' :: Vector Feature
-           -> FeatureVector
-           -> FeatureVector
-           -> Int
-           -> Vector Clause
-           -> PieM Assertion
-boolLearn' features posFV negFV k prevClauses = do
-  plog_d $ "[PIE] Boolean learning: looking at clauses up to size " ++ show k ++ "..."
-  let nextClauses    = clausesWithSize k $ Vector.length features
-  let consistentNext = filterInconsistentClauses nextClauses posFV
-  let clauses        = consistentNext Vector.++ prevClauses
-  let mSolution      = greedySetCover clauses negFV
-  case mSolution of
-    Just solution -> do
-      let assertion = clausesToAssertion features $ Vector.toList solution
-      plog_d $ "[PIE] Learned boolean expression: " ++ (showSMT assertion)
-      return $ assertion
-    Nothing -> boolLearn' features posFV negFV (k + 1) clauses
-
-filterInconsistentClauses :: Vector Clause -> FeatureVector -> Vector Clause
-filterInconsistentClauses clauses fv = Vector.filter consistent clauses
-  where consistent clause = not . or $ map (falsifies clause) $ Vector.toList fv
-
-greedySetCover :: Vector Clause -> FeatureVector -> Maybe (Vector Clause)
-greedySetCover clauses fv =
-  case Vector.length clauses of
-    0 -> if Vector.length fv == 0 then (Just clauses) else Nothing
-    _ ->
-      let
-        -- Find the clause that eliminates the most feature vectors.
-        step curIdx curClause bestSoFar@(bestCount, _, _, _) = let
-          curFv    = Vector.filter (not . falsifies curClause) fv
-          curCount = (Vector.length fv) - (Vector.length curFv)
-          in if curCount > bestCount
-             then (curCount, curIdx, curClause, curFv)
-             else bestSoFar
-        (elimCount, idx, clause, fv') = Vector.ifoldr step (-1, -1, Map.empty, Vector.empty) clauses
-      in
-        -- If we didn't eliminate any feature vectors, fail.
-        if elimCount < 1 then Nothing
-        -- If the best clause eliminates all FVs, return. Otherwise, recurse.
-        else case length fv' of
-               0 -> Just $ Vector.singleton clause
-               _ -> do
-                 let clauses' = Vector.ifilter (\i _ -> i /= idx) clauses
-                 rest <- greedySetCover clauses' fv'
-                 return $ clause `Vector.cons` rest
-
-
-----------------------
--- Feature Learning --
-----------------------
-
-featureLearn :: Int
-             -> Set Assertion
-             -> Vector State
-             -> Vector State
-             -> PieM (Maybe Assertion)
-featureLearn maxFeatureSize denylist goodTests badTests = let
-  acceptsGoods assertion = and $ Vector.toList $
-      Vector.map (\test -> testState assertion test) goodTests
-  rejectsBads assertion = and $ Vector.toList $
-      Vector.map (\test -> testState (Not assertion) test) badTests
-  firstThatSeparates assertions =
-    case assertions of
-      []   -> Nothing
-      a:as -> do
-        if acceptsGoods a && rejectsBads a
-          then Just a
-          else firstThatSeparates as
-  featureLearn' size = do
-    plog_d $ "[PIE] Examining features of length " ++ show size
-    ineqs <- linearInequalities size
-    let candidates = ineqs \\ denylist
-    let mFeature = firstThatSeparates $ Set.toList candidates
-    case mFeature of
-      Nothing -> if size >= maxFeatureSize then return Nothing else featureLearn' (size + 1)
-      Just feature -> return $ Just feature
-  in do
-    plog_d   "[PIE] Beginning feature learning pass"
-    plog_d $ "[PIE]   Good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
-    plog_d $ "[PIE]   Bad tests: " ++ (show $ Vector.map (show . pretty) badTests)
-    featureLearn' 1
