@@ -22,13 +22,12 @@ import Ceili.Name
 import Ceili.PTS ( BackwardPT )
 import Ceili.State
 import Ceili.StatePredicate
+import qualified Ceili.SMT as SMT
 import Ceili.SMTString ( showSMT )
-import Control.Monad ( filterM )
 import Control.Monad.Trans ( lift )
 import Control.Monad.Trans.State ( StateT, evalStateT, get )
 import Data.Maybe ( isJust )
 import Data.Set ( Set )
-import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
@@ -55,6 +54,9 @@ data PieEnv = PieEnv { pe_names       :: Set TypedName
 
 type PieM a = StateT PieEnv Ceili a
 
+plog_e :: String -> PieM ()
+plog_e msg = lift $ log_e msg
+
 plog_i :: String -> PieM ()
 plog_i msg = lift $ log_i msg
 
@@ -77,8 +79,8 @@ loopInvGen :: (CollectableNames p) =>
 loopInvGen backwardPT ctx cond body post goodTests = do
   log_i $ "[PIE] Beginning invariant inference with PIE"
   names <- getProgNames
-  lits <- getProgLits
-  let task = loopInvGen' backwardPT ctx cond body post Set.empty goodTests
+  lits  <- getProgLits
+  let task = loopInvGen' backwardPT ctx cond body post goodTests
   evalStateT task $ PieEnv names lits
 
 loopInvGen' :: BackwardPT c p
@@ -86,100 +88,85 @@ loopInvGen' :: BackwardPT c p
             -> Assertion
             -> p
             -> Assertion
-            -> Set Assertion
             -> [State]
             -> PieM (Maybe Assertion)
-loopInvGen' backwardPT ctx cond body post denylist goodTests = do
+loopInvGen' backwardPT ctx cond body post goodTests = do
   plog_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
   mInvar <- vPreGen (Imp (Not cond) post)
                     (Vector.fromList goodTests)
                     Vector.empty
   lift . log_i $ "[PIE] LoopInvGen initial invariant: " ++ (showSMT mInvar)
   case mInvar of
-    Nothing -> plog_i "[PIE] Unable to find initial candidate invariant"
-               >> return Nothing
+    Nothing -> do
+      plog_i "[PIE] Unable to find initial candidate invariant (an I s.t. I /\\ ~c => Post)"
+      return Nothing
     Just invar -> do
-      mInvar' <- makeInductive backwardPT ctx cond body invar denylist goodTests
+      mInvar' <- makeInductive backwardPT ctx cond body invar goodTests
       case mInvar' of
          Nothing -> do
-           plog_i "[PIE] LoopInvGen unable to find inductive strengthening, backtracking"
-           -- On every pass, filter out the non-inductive candidate clauses.
-           let nonInductive a = do
-                 wp <- backwardPT ctx body a
-                 (return . not) =<< (checkValidB $ Imp (And [cond, a]) wp)
-           nonInductiveConjs <- conjunctsMeeting nonInductive invar
-           let denylist' = Set.union denylist $ Set.fromList $ concat $ map cnfAtoms nonInductiveConjs
-           loopInvGen' backwardPT ctx cond body post denylist' goodTests
+           plog_i "[PIE] LoopInvGen unable to find inductive strengthening"
+           return Nothing -- TODO: Not this.
          Just invar' -> do
-           plog_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (showSMT mInvar')
+           plog_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ showSMT mInvar'
            plog_i $ "[PIE] Attempting to weaken invariant..."
            let validInvar inv = lift $ do
                  wp <- backwardPT ctx body inv
                  checkValidB $ And [ Imp (And [Not cond, inv]) post
                                   , Imp (And [cond, inv]) wp ]
            weakenedInvar <- weaken validInvar invar'
-           plog_i $ "[PIE] Learned invariant: " ++ showSMT weakenedInvar
+           plog_i $ "[PIE] Inference complete. Learned invariant: " ++ showSMT weakenedInvar
            return $ Just weakenedInvar
-      -- The PIE paper now looks for a contradiction with the precond and then weakens
-      -- the invariant if needed. We don't have a precond in the case where we are
-      -- looking for a WP in our PTS, so leave this off for now. (Instead, we do a Pareto
-      -- optimality weakening by iteratively removing clauses unneeded to establish the
-      -- invariant / post -- see `weaken` below.)
-      --
-      -- The code for precondition-based weakening would be something like:
-      --
-      -- mCounter <- findCounterexample $ Imp precond invar'
-      -- case mCounter of
-      --    Nothing -> return $ Just invar'
-      --    Just counter -> do
-      --      log_d $ "[PIE] LoopInvGen found counterexample to strengthened invariant: "
-      --            ++ (showSMT counter)
-      --      loopInvGen cond body post (counter:goodTests)
 
 makeInductive :: BackwardPT c p
               -> c
               -> Assertion
               -> p
               -> Assertion
-              -> Set Assertion
               -> [State]
               -> PieM (Maybe Assertion)
-makeInductive backwardPT ctx cond body invar denylist goodTests = do
+makeInductive backwardPT ctx cond body invar goodTests = do
+  plog_d $ "[PIE] Checking inductivity of candidate invariant: " ++ showSMT invar
   wp <- lift $ backwardPT ctx body invar
-  inductive <- lift $ checkValidB $ Imp (And [invar, cond]) wp
-  case inductive of
-    True -> return $ Just invar
-    False -> do
-      plog_i $ "[PIE] LoopInvGen invariant not inductive, attempting to strengthen..."
+  let query = Imp (And [invar, cond]) wp
+  response <- lift $ checkValid query
+  mInvar <- case response of
+    SMT.Valid        -> return $ Just invar
+    SMT.Invalid _    -> return Nothing
+    SMT.ValidUnknown -> do
+      plog_e $ "[PIE] SMT solver returned unknown when checking inductivity. "
+               ++ "Treating candidate as non-inductive. Inductivity SMT query: "
+               ++ showSMT query
+      return Nothing
+  case mInvar of
+    Just _  -> do
+      plog_i $ "[PIE] Candidate invariant is inductive"
+      return mInvar
+    Nothing -> do
+      plog_i $ "[PIE] Candidate invariant not inductive, attempting to strengthen"
       inductiveWP <- lift $ backwardPT ctx body invar
-      mInvar' <- vPreGen (Imp (And [invar, cond]) inductiveWP)
-                         (Vector.fromList goodTests)
-                         Vector.empty
+      let goal = Imp (And [invar, cond]) inductiveWP
+      mInvar' <- vPreGen goal (Vector.fromList goodTests) Vector.empty
       case mInvar' of
-        Nothing -> return Nothing
-        Just invar' -> makeInductive backwardPT
-                                     ctx
-                                     cond
-                                     body
-                                     (And [invar, invar'])
-                                     denylist
-                                     goodTests
+        Nothing -> do
+          plog_d $ "[PIE] Unable to find inductive strengthening of " ++ showSMT invar
+          return Nothing
+        Just invar' -> do
+          plog_d $ "[PIE] Found strengthening candidate clause: " ++ showSMT invar'
+          makeInductive backwardPT ctx cond body (conj invar invar') goodTests
 
-conjunctsMeeting :: (Assertion -> Ceili Bool) -> Assertion -> PieM [Assertion]
-conjunctsMeeting check assertion = lift $ filterM check $ conjuncts assertion
+-- |A conjoin that avoids extraneous "and" nesting.
+conj :: Assertion -> Assertion -> Assertion
+conj a1 a2 =
+  case (a1, a2) of
+    (And as, _) -> And (a2:as)
+    (_, And as) -> And (a1:as)
+    _           -> And [a1, a2]
 
 weaken :: (Assertion -> PieM Bool) -> Assertion -> PieM Assertion
 weaken sufficient assertion = do
   let conj = conjuncts assertion
   conj' <- paretoOptimize (sufficient . conjoin) conj
   return $ conjoin conj'
-
-cnfAtoms :: Assertion -> [Assertion]
-cnfAtoms assertion = case assertion of
-  And as -> concat $ map cnfAtoms as
-  Or as  -> concat $ map cnfAtoms as
-  _      -> [assertion]
-
 
 conjuncts :: Assertion -> [Assertion]
 conjuncts assertion = case assertion of
@@ -291,13 +278,13 @@ findAugmentingFeature xGood xBad = do
     Just newFeature -> do
       return $ Just newFeature
     Nothing -> do
-      case (Vector.length xGood, Vector.length xBad) of
-        (1, 1) -> plog_d "[PIE] Single conflict has no separating feature, giving up"
-                  >> return Nothing
-        (_, 1) -> plog_d "[PIE] Reducing conflict set in good tests" >>
-                  findAugmentingFeature (halve xGood) xBad
-        _      -> plog_d "[PIE] Reducing conflict set in bad tests" >>
-                  findAugmentingFeature xGood (halve xBad)
+      case (Vector.length xGood < 2, Vector.length xBad < 2) of
+        (True, True) -> plog_d "[PIE] Single conflict has no separating feature, giving up"
+                        >> return Nothing
+        (_, True)    -> plog_d "[PIE] Reducing conflict set in good tests"
+                        >> findAugmentingFeature (halve xGood) xBad
+        _            -> plog_d "[PIE] Reducing conflict set in bad tests"
+                        >> findAugmentingFeature xGood (halve xBad)
 
 halve :: Vector a -> Vector a
 halve vec =
