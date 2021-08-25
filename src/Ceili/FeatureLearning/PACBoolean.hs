@@ -53,7 +53,7 @@ boolLearn :: Vector Assertion
           -> Vector Clause
           -> Ceili Assertion
 boolLearn features posFV negFV k prevClauses = do
-  log_d $ "[PAC] Loking at clauses of size " ++ show k
+  log_d $ "[PAC] Looking at clauses of size " ++ show k
   let nextClauses    = clausesWithSize k $ Vector.length features
   let consistentNext = removeInconsistentClauses nextClauses posFV
   let clauses        = consistentNext Vector.++ prevClauses

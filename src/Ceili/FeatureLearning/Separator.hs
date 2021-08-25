@@ -3,6 +3,7 @@ module Ceili.FeatureLearning.Separator
   ) where
 
 import Ceili.Assertion
+import Ceili.SMTString
 import Ceili.State
 import Ceili.StatePredicate ( testState )
 import Data.Set ( Set )
@@ -37,7 +38,7 @@ findSeparator maxCandidateSize candidatesOfSize goodTests badTests = let
         then logMaxSizeReached maxCandidateSize >> return Nothing
         else featureLearn' (size + 1)
       Just feature -> do
-        log_d $ "[Separator] Found separator: " ++ show feature
+        log_d $ "[Separator] Found separator: " ++ showSMT feature
         return $ Just feature
   in do
     log_d   "[Separator] Beginning separator search"
