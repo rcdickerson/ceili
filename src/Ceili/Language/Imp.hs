@@ -389,13 +389,29 @@ instance PopulateTestStates c e => PopulateTestStates c (ImpIf e) where
       return $ ImpIf c t' f'
 
 instance (FuelTank f, PopulateTestStates f e) => PopulateTestStates f (ImpWhile e) where
-  populateTestStates fuel sts (ImpWhile cond body meta) = do
-    let ImpWhileMetadata inv meas tests = meta
-    let tests' = Set.union (Set.fromList sts) (fromMaybe Set.empty tests)
+  populateTestStates fuel sts loop@(ImpWhile cond body meta) = do
+    let ImpWhileMetadata inv meas mTests = meta
+    loopStates <- return . Set.fromList =<< collectLoopStates fuel sts loop
+    let tests' = case mTests of
+                   Nothing    -> loopStates
+                   Just tests -> Set.union tests loopStates
     let (trueSts, _) = partition (\st -> evalBExp st cond) sts
     body' <- populateTestStates fuel trueSts body
     return $ ImpWhile cond body' $ ImpWhileMetadata inv meas $
       if Set.null tests' then Nothing else Just tests'
+
+collectLoopStates :: (FuelTank f, EvalImp f e) => f -> [State] -> (ImpWhile e) -> Ceili [State]
+collectLoopStates fuel sts loop@(ImpWhile cond body _) = do
+  case getFuel fuel of
+    Fuel 0 -> return sts
+    _ -> do
+      let (trueSts, _) = partition (\st -> evalBExp st cond) sts
+      case trueSts of
+        [] -> return sts
+        _  -> do
+          nextSts <- sequence $ map (\st -> evalImp fuel st body) sts
+          rest <- collectLoopStates (decrementFuel fuel) (catMaybes nextSts) loop
+          return $ sts ++ rest
 
 instance (PopulateTestStates c (f e), PopulateTestStates c (g e)) =>
          PopulateTestStates c ((f :+: g) e) where

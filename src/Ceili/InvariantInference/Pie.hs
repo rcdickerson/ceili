@@ -48,8 +48,8 @@ createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
 -- Computation --
 -----------------
 
-data PieEnv = PieEnv { pe_names       :: Set TypedName
-                     , pe_lits        :: Set Integer
+data PieEnv = PieEnv { pe_names :: Set TypedName
+                     , pe_lits  :: Set Integer
                      }
 
 type PieM a = StateT PieEnv Ceili a
