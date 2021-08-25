@@ -123,6 +123,12 @@ class FreshableNames a where
 instance FreshableNames a => FreshableNames [a] where
   freshen names = mapM freshen names
 
+instance (Ord a, FreshableNames a) => FreshableNames (Set a) where
+  freshen names = do
+    let elems = Set.toList names
+    elems' <- freshen elems
+    return $ Set.fromList elems'
+
 instance FreshableNames a => FreshableNames (Maybe a) where
   freshen ma = case ma of
     Nothing -> return Nothing

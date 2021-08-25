@@ -23,6 +23,7 @@ module Ceili.Language.Imp
   , ImpWhile(..)
   , ImpWhileMetadata(..)
   , Invariant
+  , IterStateMap
   , Measure
   , Name(..)
   , PopulateTestStates(..)
@@ -36,6 +37,7 @@ module Ceili.Language.Imp
   , impWhile
   , impWhileWithMeta
   , inject
+  , unionIterStates
   ) where
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
@@ -50,10 +52,11 @@ import Ceili.Literal
 import Ceili.Name
 import Ceili.SMTString ( showSMT )
 import Data.List ( partition )
+import Data.Map ( Map )
+import qualified Data.Map as Map
 import Data.Maybe ( catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as Set
-import qualified Data.Map as Map
 import Prettyprinter
 
 
@@ -94,35 +97,50 @@ type ImpProgram = ImpExpr ( ImpSkip
 -- ImpWhile Metadata --
 -----------------------
 
-type Invariant = Assertion
-type Measure   = A.Arith
+type Invariant    = Assertion
+type Measure      = A.Arith
+type IterStateMap = Map Int (Set State)
+
 data ImpWhileMetadata =
   ImpWhileMetadata { iwm_invariant  :: Maybe Invariant
                    , iwm_measure    :: Maybe Measure
-                   , iwm_testStates :: Maybe (Set State)
+                   , iwm_testStates :: Maybe IterStateMap
                    } deriving (Eq, Ord, Show)
 
 emptyWhileMetadata :: ImpWhileMetadata
 emptyWhileMetadata = ImpWhileMetadata Nothing Nothing Nothing
+
+unionIterStates :: IterStateMap -> IterStateMap -> IterStateMap
+unionIterStates = Map.unionWith Set.union
+
+mapIterMapNames :: (Name -> Name) -> IterStateMap -> IterStateMap
+mapIterMapNames f iterMap = let
+  assocList = Map.assocs iterMap
+  mapAssoc (k, v) = (k, mapNames f v)
+  in Map.fromAscList $ map mapAssoc assocList
+
+freshenIterMapNames :: IterStateMap -> Freshener IterStateMap
+freshenIterMapNames iterMap = do
+  let assocList = Map.assocs iterMap
+  let freshenAssoc (k, v) = do v' <- freshen v; return (k, v')
+  assocList' <- sequence $ map freshenAssoc assocList
+  return $ Map.fromAscList assocList'
 
 instance MappableNames ImpWhileMetadata where
   mapNames f (ImpWhileMetadata mInvar mMeasure mTests) =
     let
       mInvar'   = do invar   <- mInvar;   return $ mapNames f invar
       mMeasure' = do measure <- mMeasure; return $ mapNames f measure
-      mTests'   = do tests   <- mTests;   return $ mapNames f tests
+      mTests'   = do tests   <- mTests;   return $ mapIterMapNames f tests
     in ImpWhileMetadata mInvar' mMeasure' mTests'
 
 instance FreshableNames ImpWhileMetadata where
-  freshen (ImpWhileMetadata invar measure tests) = do
+  freshen (ImpWhileMetadata invar measure mTests) = do
     invar'   <- freshen invar
     measure' <- freshen measure
-    tests'   <- case tests of
-                  Nothing -> return Nothing
-                  Just s  -> do
-                    let testList = Set.toList s
-                    testList' <- freshen testList
-                    return $ Just (Set.fromList testList')
+    tests'   <- case mTests of
+                  Nothing    -> return Nothing
+                  Just tests -> return . Just =<< freshenIterMapNames tests
     return $ ImpWhileMetadata invar' measure' tests'
 
 
@@ -391,27 +409,28 @@ instance PopulateTestStates c e => PopulateTestStates c (ImpIf e) where
 instance (FuelTank f, PopulateTestStates f e) => PopulateTestStates f (ImpWhile e) where
   populateTestStates fuel sts loop@(ImpWhile cond body meta) = do
     let ImpWhileMetadata inv meas mTests = meta
-    loopStates <- return . Set.fromList =<< collectLoopStates fuel sts loop
+    loopStates <- collectLoopStates fuel 0 sts loop
     let tests' = case mTests of
                    Nothing    -> loopStates
-                   Just tests -> Set.union tests loopStates
+                   Just tests -> unionIterStates tests loopStates
     let (trueSts, _) = partition (\st -> evalBExp st cond) sts
     body' <- populateTestStates fuel trueSts body
     return $ ImpWhile cond body' $ ImpWhileMetadata inv meas $
-      if Set.null tests' then Nothing else Just tests'
+      if Map.null tests' then Nothing else Just tests'
 
-collectLoopStates :: (FuelTank f, EvalImp f e) => f -> [State] -> (ImpWhile e) -> Ceili [State]
-collectLoopStates fuel sts loop@(ImpWhile cond body _) = do
+collectLoopStates :: (FuelTank f, EvalImp f e) => f -> Int -> [State] -> (ImpWhile e) -> Ceili IterStateMap
+collectLoopStates fuel iterNum sts loop@(ImpWhile cond body _) = do
+  let thisIter = Map.singleton iterNum (Set.fromList sts)
   case getFuel fuel of
-    Fuel 0 -> return sts
+    Fuel 0 -> return thisIter
     _ -> do
       let (trueSts, _) = partition (\st -> evalBExp st cond) sts
       case trueSts of
-        [] -> return sts
+        [] -> return thisIter
         _  -> do
           nextSts <- sequence $ map (\st -> evalImp fuel st body) sts
-          rest <- collectLoopStates (decrementFuel fuel) (catMaybes nextSts) loop
-          return $ sts ++ rest
+          rest <- collectLoopStates (decrementFuel fuel) (iterNum + 1) (catMaybes nextSts) loop
+          return $ unionIterStates thisIter rest
 
 instance (PopulateTestStates c (f e), PopulateTestStates c (g e)) =>
          PopulateTestStates c ((f :+: g) e) where
@@ -502,7 +521,7 @@ instance (CollectableNames e, ImpBackwardPT c e) => ImpBackwardPT c (ImpWhile e)
                  Nothing -> throwError
                    "No test states for while loop, did you run populateTestStates?"
                  Just testStates -> do
-                   let tests = Set.toList testStates
+                   let tests = Set.toList . Set.unions . Map.elems $ testStates
                    mInferredInv <- Pie.loopInvGen impBackwardPT ctx cond body post tests
                    case mInferredInv of
                      Just inv -> return inv
