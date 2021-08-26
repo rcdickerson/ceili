@@ -247,7 +247,7 @@ pie features goodTests badTests = do
   let negFV = createFV features badTests
   case getConflict posFV negFV goodTests badTests of
     Just (xGood, xBad) -> do
-      mNewFeature <- findAugmentingFeature xGood xBad
+      mNewFeature <- findAugmentingFeature (Vector.take 8 xGood) (Vector.take 8 xBad)
       case mNewFeature of
         Nothing         -> return Nothing
         Just newFeature -> pie (Vector.cons newFeature features) goodTests badTests
