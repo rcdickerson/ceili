@@ -72,8 +72,7 @@ plog_d msg = lift $ log_d msg
 -- LoopInvGen --
 ----------------
 
-loopInvGen :: ( CollectableNames p
-              , Num t
+loopInvGen :: ( Num t
               , Ord t
               , SMTString t
               , StatePredicate (Assertion t) t

@@ -18,12 +18,13 @@ import Control.Monad ( filterM )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
-infer :: Set TypedName
-      -> Set Integer
+infer :: (Num t, Ord t, SMTString t)
+      => Set TypedName
+      -> Set t
       -> Int
-      -> Assertion Integer
-      -> (Assertion Integer -> Ceili (Assertion Integer))
-      -> Ceili (Assertion Integer)
+      -> Assertion t
+      -> (Assertion t -> Ceili (Assertion t))
+      -> Ceili (Assertion t)
 infer names lits size precond computeSP = do
   log_i "[Houdini] Beginning invariant inference with Houdini"
   log_d $ (show $ Set.size names) ++ " names, "
@@ -34,11 +35,12 @@ infer names lits size precond computeSP = do
   log_i $ "[Houdini] Invariant: " ++ (show $ And inductiveClauses)
   return $ And inductiveClauses
 
-findCandidates :: Set TypedName
-               -> Set Integer
+findCandidates :: (Num t, Ord t, SMTString t)
+               => Set TypedName
+               -> Set t
                -> Int
-               -> Assertion Integer
-               -> Ceili [Assertion Integer]
+               -> Assertion t
+               -> Ceili [Assertion t]
 findCandidates names lits size precond = do
   let candidates = linearInequalities names lits size
   log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)

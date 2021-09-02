@@ -8,6 +8,7 @@ module Ceili.Assertion.AssertionLanguage
   , Assertion(..)
   , Name(..)
   , SubstitutableArith(..)
+  , eval
   , freeVars
   , subAriths
   , toSMT

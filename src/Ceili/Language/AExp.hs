@@ -77,7 +77,7 @@ instance Ord t => CollectableLiterals (AExp t) t where
     AMod lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
     APow lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
 
-aexpToArith :: (AExp t) -> A.Arith t
+aexpToArith :: AExp t -> A.Arith t
 aexpToArith aexp = case aexp of
   ALit i           -> A.Num i
   AVar var         -> A.Var (TypedName var Int)
