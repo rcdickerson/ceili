@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 -- An implementation of PIE / LoopInvGen invariant inference from
 -- "Data-driven precondition inference with learned features"
 -- Padhi, Saswat, Rahul Sharma, and Todd Millstein
@@ -20,10 +23,10 @@ import qualified Ceili.FeatureLearning.PACBoolean as BL
 import qualified Ceili.FeatureLearning.Separator as SL
 import Ceili.Name
 import Ceili.PTS ( BackwardPT )
-import Ceili.State
-import Ceili.StatePredicate
+import Ceili.ProgState
 import qualified Ceili.SMT as SMT
-import Ceili.SMTString ( showSMT )
+import Ceili.SMTString
+import Ceili.StatePredicate
 import Control.Monad.Trans ( lift )
 import Control.Monad.Trans.State ( StateT, evalStateT, get )
 import Data.Maybe ( isJust )
@@ -38,7 +41,8 @@ import qualified Data.Vector as Vector
 ---------------------
 type FeatureVector = Vector Bool
 
-createFV :: Vector Assertion -> Vector State -> Vector FeatureVector
+createFV :: (StatePredicate (Assertion t) t) =>
+            Vector (Assertion t) -> Vector (ProgState t) -> Vector FeatureVector
 createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
                           Vector.generate (Vector.length features) $ \featureIdx ->
                           testState (features!featureIdx) (tests!testIdx)
@@ -48,19 +52,19 @@ createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
 -- Computation --
 -----------------
 
-data PieEnv = PieEnv { pe_names :: Set TypedName
-                     , pe_lits  :: Set Integer
-                     }
+data PieEnv t = PieEnv { pe_names :: Set TypedName
+                       , pe_lits  :: Set t
+                       }
 
-type PieM a = StateT PieEnv Ceili a
+type PieM t a = StateT (PieEnv t) Ceili a
 
-plog_e :: String -> PieM ()
+plog_e :: String -> PieM t ()
 plog_e msg = lift $ log_e msg
 
-plog_i :: String -> PieM ()
+plog_i :: String -> PieM t ()
 plog_i msg = lift $ log_i msg
 
-plog_d :: String -> PieM ()
+plog_d :: String -> PieM t ()
 plog_d msg = lift $ log_d msg
 
 
@@ -68,28 +72,38 @@ plog_d msg = lift $ log_d msg
 -- LoopInvGen --
 ----------------
 
-loopInvGen :: (CollectableNames p) =>
-              BackwardPT c p
+loopInvGen :: ( CollectableNames p
+              , Num t
+              , Ord t
+              , SMTString t
+              , StatePredicate (Assertion t) t
+              , AssertionParseable t )
+           => Set TypedName
+           -> Set t
+           -> BackwardPT c p t
            -> c
-           -> Assertion
+           -> Assertion t
            -> p
-           -> Assertion
-           -> [State]
-           -> Ceili (Maybe Assertion)
-loopInvGen backwardPT ctx cond body post goodTests = do
+           -> Assertion t
+           -> [ProgState t]
+           -> Ceili (Maybe (Assertion t))
+loopInvGen names literals backwardPT ctx cond body post goodTests = do
   log_i $ "[PIE] Beginning invariant inference with PIE"
-  names <- getProgNames
-  lits  <- getProgLits
   let task = loopInvGen' backwardPT ctx cond body post goodTests
-  evalStateT task $ PieEnv names lits
+  evalStateT task $ PieEnv names literals
 
-loopInvGen' :: BackwardPT c p
+loopInvGen' :: ( SMTString t
+               , Num t
+               , Ord t
+               , StatePredicate (Assertion t) t
+               , AssertionParseable t )
+            => BackwardPT c p t
             -> c
-            -> Assertion
+            -> Assertion t
             -> p
-            -> Assertion
-            -> [State]
-            -> PieM (Maybe Assertion)
+            -> Assertion t
+            -> [ProgState t]
+            -> PieM t (Maybe (Assertion t))
 loopInvGen' backwardPT ctx cond body post goodTests = do
   plog_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
   mInvar <- vPreGen (Imp (Not cond) post)
@@ -117,13 +131,18 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
            plog_i $ "[PIE] Inference complete. Learned invariant: " ++ showSMT weakenedInvar
            return $ Just weakenedInvar
 
-makeInductive :: BackwardPT c p
+makeInductive :: ( Num t
+                 , Ord t
+                 , SMTString t
+                 , StatePredicate (Assertion t) t
+                 , AssertionParseable t )
+              => BackwardPT c p t
               -> c
-              -> Assertion
+              -> Assertion t
               -> p
-              -> Assertion
-              -> [State]
-              -> PieM (Maybe Assertion)
+              -> Assertion t
+              -> [ProgState t]
+              -> PieM t (Maybe (Assertion t))
 makeInductive backwardPT ctx cond body invar goodTests = do
   plog_d $ "[PIE] Checking inductivity of candidate invariant: " ++ showSMT invar
   wp <- lift $ backwardPT ctx body invar
@@ -155,31 +174,31 @@ makeInductive backwardPT ctx cond body invar goodTests = do
           makeInductive backwardPT ctx cond body (conj invar invar') goodTests
 
 -- |A conjoin that avoids extraneous "and" nesting.
-conj :: Assertion -> Assertion -> Assertion
+conj :: Assertion t -> Assertion t -> Assertion t
 conj a1 a2 =
   case (a1, a2) of
     (And as, _) -> And (a2:as)
     (_, And as) -> And (a1:as)
     _           -> And [a1, a2]
 
-weaken :: (Assertion -> PieM Bool) -> Assertion -> PieM Assertion
+weaken :: (Assertion t -> PieM t Bool) -> Assertion t -> PieM t (Assertion t)
 weaken sufficient assertion = do
   let conj = conjuncts assertion
   conj' <- paretoOptimize (sufficient . conjoin) conj
   return $ conjoin conj'
 
-conjuncts :: Assertion -> [Assertion]
+conjuncts :: Assertion t -> [Assertion t]
 conjuncts assertion = case assertion of
   And as -> concat $ map conjuncts as
   _      -> [assertion]
 
-conjoin :: [Assertion] -> Assertion
+conjoin :: [Assertion t] -> Assertion t
 conjoin as = case as of
   []     -> ATrue
   (a:[]) -> a
   _      -> And as
 
-paretoOptimize :: ([Assertion] -> PieM Bool) -> [Assertion] -> PieM [Assertion]
+paretoOptimize :: ([Assertion t] -> PieM t Bool) -> [Assertion t] -> PieM t [Assertion t]
 paretoOptimize sufficient assertions =
   let
     optimize (needed, toExamine) =
@@ -197,15 +216,20 @@ paretoOptimize sufficient assertions =
 -- vPreGen --
 -------------
 
-vPreGen :: Assertion
-        -> Vector State
-        -> Vector State
-        -> PieM (Maybe Assertion)
+vPreGen :: ( Num t
+           , Ord t
+           , SMTString t
+           , StatePredicate (Assertion t) t
+           , AssertionParseable t )
+        => (Assertion t)
+        -> Vector (ProgState t)
+        -> Vector (ProgState t)
+        -> PieM t (Maybe (Assertion t))
 vPreGen goal goodTests badTests = do
   plog_d $ "[PIE] Starting vPreGen pass"
   plog_d $ "[PIE]   goal: "       ++ showSMT goal
-  plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
-  plog_d $ "[PIE]   bad tests: "  ++ (show $ Vector.map (show . pretty) badTests)
+  plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map prettySMTState goodTests)
+  plog_d $ "[PIE]   bad tests: "  ++ (show $ Vector.map prettySMTState badTests)
   mCandidate <- pie Vector.empty goodTests badTests
   case mCandidate of
     Nothing -> return Nothing
@@ -221,7 +245,7 @@ vPreGen goal goodTests badTests = do
           vPreGen goal goodTests $ Vector.cons (extractState counter) badTests
 
 -- TODO: This is fragile.
-extractState :: Assertion -> State
+extractState :: SMTString t => (Assertion t) -> (ProgState t)
 extractState assertion = case assertion of
   Eq lhs rhs -> Map.fromList [(extractName lhs, extractInt rhs)]
   And as     -> Map.unions $ map extractState as
@@ -234,14 +258,19 @@ extractState assertion = case assertion of
       Num n -> n
       _ -> error $ "Unexpected arith (expected int): " ++ show arith
 
+
 ---------
 -- PIE --
 ---------
 
-pie :: Vector Assertion
-    -> Vector State
-    -> Vector State
-    -> PieM (Maybe Assertion)
+pie :: ( Num t
+       , Ord t
+       , SMTString t
+       , StatePredicate (Assertion t) t )
+    => Vector (Assertion t)
+    -> Vector (ProgState t)
+    -> Vector (ProgState t)
+    -> PieM t (Maybe (Assertion t))
 pie features goodTests badTests = do
   let posFV = createFV features goodTests
   let negFV = createFV features badTests
@@ -255,9 +284,9 @@ pie features goodTests badTests = do
 
 getConflict :: Vector FeatureVector
             -> Vector FeatureVector
-            -> Vector State
-            -> Vector State
-            -> Maybe (Vector State, Vector State)
+            -> Vector (ProgState t)
+            -> Vector (ProgState t)
+            -> Maybe (Vector (ProgState t), Vector (ProgState t))
 getConflict posFVs negFVs goodTests badTests = do
   conflict <- findConflict posFVs negFVs
   let posIndices = Vector.findIndices (== conflict) posFVs
@@ -267,13 +296,19 @@ getConflict posFVs negFVs goodTests badTests = do
 findConflict :: Vector FeatureVector -> Vector FeatureVector -> Maybe (Vector Bool)
 findConflict posFVs negFVs = Vector.find (\pos -> isJust $ Vector.find (== pos) negFVs) posFVs
 
-findAugmentingFeature :: Vector State
-                      -> Vector State
-                      -> PieM (Maybe Assertion)
+findAugmentingFeature :: ( Num t
+                         , Ord t
+                         , SMTString t
+                         , SMTString s
+                         , StatePredicate (Assertion t) s )
+                      => Vector (ProgState s)
+                      -> Vector (ProgState s)
+                      -> PieM t (Maybe (Assertion t))
 findAugmentingFeature xGood xBad = do
   let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
   PieEnv names lits <- get
-  mNewFeature <- lift $ SL.findSeparator maxFeatureSize (LI.linearInequalities names lits) xGood xBad
+  let (goodTests, badTests) = (Vector.toList xGood, Vector.toList xBad)
+  mNewFeature <- lift $ SL.findSeparator maxFeatureSize (LI.linearInequalities names lits) goodTests badTests
   case mNewFeature of
     Just newFeature -> do
       return $ Just newFeature

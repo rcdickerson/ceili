@@ -1,6 +1,7 @@
 module Ceili.Assertion
   ( Arith(..)
   , Assertion(..)
+  , AssertionParseable(..)
   , Name(..)
   , ParseError
   , SubstitutableArith(..)
@@ -14,10 +15,9 @@ module Ceili.Assertion
 
 import Ceili.Assertion.AssertionLanguage
 import Ceili.Assertion.AssertionParser
-import Ceili.Language.AExp
-import Ceili.State
+import Ceili.ProgState
 import qualified Data.Map as Map
 
-assertionAtState :: State -> Assertion -> Assertion
+assertionAtState :: Integral t => ProgState t -> Assertion t -> Assertion t
 assertionAtState st assertion = Map.foldrWithKey subArith assertion arithSt
-  where arithSt = Map.map Num $ withTypedKeys st
+  where arithSt = Map.map Num $ withIntTypedKeys st

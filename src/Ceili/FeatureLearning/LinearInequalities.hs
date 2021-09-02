@@ -16,7 +16,7 @@ import qualified Data.Set as Set
 --   `name` will appear at most once.
 -- + If `size` is larger than the set of available names, it is implicity
 --   reduced to the largest value the given set of names accomodates.
-linearInequalities :: Set TypedName -> Set Integer -> Int -> Set Assertion
+linearInequalities :: (Num t, Ord t) => Set TypedName -> Set t -> Int -> Set (Assertion t)
 linearInequalities names lits size = let
   size' = if (Set.size names < size) then Set.size names else size
   arithLits   = Set.map Num $ Set.insert 0
@@ -27,7 +27,7 @@ linearInequalities names lits size = let
   varGroups   = Collection.subsetsOfSize size' varNames
   in Set.unions $ Set.map (constructLCs arithLits) varGroups
 
-constructLCs :: Set Arith -> Set Arith -> Set Assertion
+constructLCs :: (Num t, Ord t) => Set (Arith t) -> Set (Arith t) -> Set (Assertion t)
 constructLCs lits vars = let
   lhss = Set.map addOrSingle $
          Set.filter (not . null) $
@@ -35,13 +35,13 @@ constructLCs lits vars = let
          constructLhss lits vars
   in Set.map (uncurry Lte) $ Set.cartesianProduct lhss lits
 
-addOrSingle :: [Arith] -> Arith
+addOrSingle :: [Arith t] -> Arith t
 addOrSingle as =
   case as of
     a:[] -> a
     _    -> Add as
 
-constructLhss :: Set Arith -> Set Arith -> Set [Arith]
+constructLhss :: Ord t => Set (Arith t) -> Set (Arith t) -> Set [Arith t]
 constructLhss lits vars =
   case Set.size vars of
     0 -> Set.empty
@@ -53,7 +53,7 @@ constructLhss lits vars =
       rests = constructLhss lits vars'
       in Set.map (uncurry (:)) $ Set.cartesianProduct hds rests
 
-simplifyMult :: Arith -> Arith
+simplifyMult :: (Num t, Eq t) => Arith t -> Arith t
 simplifyMult arith =
   case arith of
     Mul [] -> Num 0
@@ -64,5 +64,5 @@ simplifyMult arith =
                      as'  -> Mul as'
     _      -> arith
 
-simplifyMults :: [Arith] -> [Arith]
+simplifyMults :: (Num t, Eq t) => [Arith t] -> [Arith t]
 simplifyMults ariths = filter (/= Num 0) $ map simplifyMult ariths

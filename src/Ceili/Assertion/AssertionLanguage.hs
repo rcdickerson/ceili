@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Ceili.Assertion.AssertionLanguage
@@ -10,11 +13,14 @@ module Ceili.Assertion.AssertionLanguage
   , toSMT
   ) where
 
+import Ceili.Evaluation
 import Ceili.Literal
 import Ceili.Name
+import Ceili.ProgState
 import Ceili.SMTString ( SMTString(..) )
 import Data.ByteString ( ByteString )
 import qualified Data.ByteString.Char8 as S8
+import qualified Data.Map as Map
 import Data.Set  ( Set )
 import qualified Data.Set as Set
 import Prettyprinter
@@ -24,20 +30,23 @@ import Prettyprinter
 -- Arithmetic Expressions --
 ----------------------------
 
-data Arith = Num Integer
-           | Var TypedName
-           | Add [Arith]
-           | Sub [Arith]
-           | Mul [Arith]
-           | Div Arith Arith
-           | Mod Arith Arith
-           | Pow Arith Arith
-           deriving (Show, Eq, Ord)
+data Arith t = Num t
+             | Var TypedName
+             | Add [Arith t]
+             | Sub [Arith t]
+             | Mul [Arith t]
+             | Div (Arith t) (Arith t)
+             | Mod (Arith t) (Arith t)
+             | Pow (Arith t) (Arith t)
+           deriving (Eq, Ord)
+
+instance SMTString t => Show (Arith t) where
+  show = S8.unpack . toSMT
 
 toSexp :: SMTString a => ByteString -> [a] -> ByteString
 toSexp name as = "(" <> name <> " "<> (S8.intercalate " " $ map toSMT as) <> ")"
 
-instance MappableNames Arith where
+instance MappableNames (Arith t) where
   mapNames f arith = case arith of
     Num x     -> Num x
     Var tname -> Var (mapNames f tname)
@@ -48,7 +57,7 @@ instance MappableNames Arith where
     Mod a1 a2 -> Mod (mapNames f a1) (mapNames f a2)
     Pow a1 a2 -> Pow (mapNames f a1) (mapNames f a2)
 
-instance CollectableNames Arith where
+instance CollectableNames (Arith t) where
   namesIn arith = case arith of
     Num _     -> Set.empty
     Var tname -> namesIn tname
@@ -59,10 +68,10 @@ instance CollectableNames Arith where
     Mod a1 a2 -> Set.union (namesIn a1) (namesIn a2)
     Pow a1 a2 -> Set.union (namesIn a1) (namesIn a2)
 
-instance CollectableTypedNames Arith where
+instance Integral t => CollectableTypedNames (Arith t) where
   typedNamesIn arith = Set.map (\n -> TypedName n Int) $ namesIn arith
 
-instance FreshableNames Arith where
+instance FreshableNames (Arith t) where
   freshen arith = case arith of
     Num i     -> return $ Num i
     Var tname -> return . Var =<< freshen tname
@@ -73,7 +82,7 @@ instance FreshableNames Arith where
     Mod a1 a2 -> freshenBinop Mod a1 a2
     Pow a1 a2 -> freshenBinop Pow a1 a2
 
-instance CollectableLiterals Arith where
+instance Ord t => CollectableLiterals (Arith t) t where
   litsIn arith = case arith of
     Num i     -> Set.singleton i
     Var _     -> Set.empty
@@ -84,9 +93,9 @@ instance CollectableLiterals Arith where
     Mod a1 a2 -> Set.union (litsIn a1) (litsIn a2)
     Pow a1 a2 -> Set.union (litsIn a1) (litsIn a2)
 
-instance SMTString Arith where
+instance SMTString t => SMTString (Arith t) where
   toSMT arith = case arith of
-    Num n -> S8.pack $ show n
+    Num n     -> toSMT n
     Var tname -> toSMT $ tn_name tname
     Add as    -> toSexp "+"   as
     Sub as    -> toSexp "-"   as
@@ -95,28 +104,50 @@ instance SMTString Arith where
     Mod a1 a2 -> toSexp "mod" [a1, a2]
     Pow a1 a2 -> toSexp "^"   [a1, a2]
 
+instance Integral t => Evaluable c t (Arith t) t where
+   eval _ = evalArith
+
+evalArith :: Integral t => ProgState t -> Arith t -> t
+evalArith state arith = case arith of
+  Num i     -> i
+  Var v     -> case Map.lookup (tn_name v) state of
+                 Nothing -> 0
+                 Just n  -> n
+  Add as    -> foldr (+) 0 $ map (evalArith state) as
+  Sub as    -> case as of
+                 []      -> 0
+                 (a:as') -> foldl (-) (evalArith state a)
+                            $ map (evalArith state) as'
+  Mul as    -> foldr (*) 1 $ map (evalArith state) as
+  Div a1 a2 -> (evalArith state a1) `quot` (evalArith state a2)
+  Mod a1 a2 -> (evalArith state a1) `mod`  (evalArith state a2)
+  Pow a1 a2 -> (evalArith state a1) ^      (evalArith state a2)
+
 
 ----------------
 -- Assertions --
 ----------------
 
-data Assertion = ATrue
-               | AFalse
-               | Atom     TypedName
-               | Not      Assertion
-               | And      [Assertion]
-               | Or       [Assertion]
-               | Imp      Assertion Assertion
-               | Eq       Arith Arith
-               | Lt       Arith Arith
-               | Gt       Arith Arith
-               | Lte      Arith Arith
-               | Gte      Arith Arith
-               | Forall   [TypedName] Assertion
-               | Exists   [TypedName] Assertion
-               deriving (Eq, Ord, Show)
+data Assertion t = ATrue
+                 | AFalse
+                 | Atom     TypedName
+                 | Not      (Assertion t)
+                 | And      [Assertion t]
+                 | Or       [Assertion t]
+                 | Imp      (Assertion t) (Assertion t)
+                 | Eq       (Arith t) (Arith t)
+                 | Lt       (Arith t) (Arith t)
+                 | Gt       (Arith t) (Arith t)
+                 | Lte      (Arith t) (Arith t)
+                 | Gte      (Arith t) (Arith t)
+                 | Forall   [TypedName] (Assertion t)
+                 | Exists   [TypedName] (Assertion t)
+               deriving (Eq, Ord)
 
-instance MappableNames Assertion where
+instance SMTString t => Show (Assertion t) where
+  show = S8.unpack . toSMT
+
+instance MappableNames (Assertion t) where
   mapNames f assertion = case assertion of
     ATrue       -> ATrue
     AFalse      -> AFalse
@@ -133,7 +164,7 @@ instance MappableNames Assertion where
     Forall vs a -> Forall (map (mapNames f) vs) (mapNames f a)
     Exists vs a -> Exists (map (mapNames f) vs) (mapNames f a)
 
-instance CollectableNames Assertion where
+instance CollectableNames (Assertion t) where
   namesIn assertion = case assertion of
     ATrue       -> Set.empty
     AFalse      -> Set.empty
@@ -150,10 +181,10 @@ instance CollectableNames Assertion where
     Forall vs a -> Set.unions $ (namesIn a):(map namesIn vs)
     Exists vs a -> Set.unions $ (namesIn a):(map namesIn vs)
 
-instance CollectableTypedNames Assertion where
+instance Integral t => CollectableTypedNames (Assertion t) where
   typedNamesIn assertion = Set.map (\n -> TypedName n Int) $ namesIn assertion
 
-instance FreshableNames Assertion where
+instance FreshableNames (Assertion t) where
   freshen assertion = case assertion of
     ATrue       -> return ATrue
     AFalse      -> return AFalse
@@ -175,7 +206,7 @@ instance FreshableNames Assertion where
         a'  <- freshen a
         return $ op vs' a'
 
-instance CollectableLiterals Assertion where
+instance Ord t => CollectableLiterals (Assertion t) t where
   litsIn assertion = case assertion of
     ATrue      -> Set.empty
     AFalse     -> Set.empty
@@ -192,7 +223,24 @@ instance CollectableLiterals Assertion where
     Forall _ a -> litsIn a
     Exists _ a -> litsIn a
 
-instance SMTString Assertion where
+instance Integral t => Evaluable c t (Assertion t) Bool where
+ eval ctx state assertion = case assertion of
+   ATrue     -> True
+   AFalse    -> False
+   Atom _    -> False -- This assumes states cannot store booleans.
+   Not a     -> not $ eval ctx state a
+   And as    -> and $ map (eval ctx state) as
+   Or  as    -> or  $ map (eval ctx state) as
+   Imp a1 a2 -> not (eval ctx state a1) || eval ctx state a2
+   Eq  a1 a2 -> (evalArith state a1) == (evalArith state a2)
+   Lt  a1 a2 -> (evalArith state a1) <  (evalArith state a2)
+   Gt  a1 a2 -> (evalArith state a1) >  (evalArith state a2)
+   Lte a1 a2 -> (evalArith state a1) <= (evalArith state a2)
+   Gte a1 a2 -> (evalArith state a1) >= (evalArith state a2)
+   Forall _ _ -> error "Quantified formulas not supported."
+   Exists _ _ -> error "Quantified formulas not supported."
+
+instance SMTString t => SMTString (Assertion t) where
   toSMT assertion = case assertion of
     ATrue           -> "true"
     AFalse          -> "false"
@@ -209,7 +257,7 @@ instance SMTString Assertion where
     Forall vars a   -> quantToSMT "forall" vars a
     Exists vars a   -> quantToSMT "exists" vars a
     where
-      quantToSMT :: ByteString -> [TypedName] -> Assertion -> ByteString
+      quantToSMT :: SMTString t => ByteString -> [TypedName] -> Assertion t -> ByteString
       quantToSMT name qvars body =
         let qvarsSMT = S8.intercalate " " $ map toSMT qvars
         in "(" <> name <> " (" <> qvarsSMT <> ") " <> toSMT body <> ")"
@@ -219,10 +267,10 @@ instance SMTString Assertion where
 --- Arithmetic Substitution --
 ------------------------------
 
-class SubstitutableArith a where
-  subArith :: TypedName -> Arith -> a -> a
+class SubstitutableArith t a where
+  subArith :: TypedName -> (Arith t) -> a -> a
 
-instance SubstitutableArith Arith where
+instance SubstitutableArith t (Arith t) where
   subArith from to arith =
     let sub = subArith from to
     in case arith of
@@ -235,7 +283,7 @@ instance SubstitutableArith Arith where
       Mod a1 a2 -> Mod (sub a1) (sub a2)
       Pow a1 a2 -> Pow (sub a1) (sub a2)
 
-instance SubstitutableArith Assertion where
+instance SubstitutableArith t (Assertion t) where
   subArith from to assertion =
     let sub = subArith from to
     in case assertion of
@@ -254,7 +302,7 @@ instance SubstitutableArith Assertion where
       Forall vars a -> Forall vars (sub a)
       Exists vars a -> Exists vars (sub a)
 
-subAriths :: SubstitutableArith a => [TypedName] -> [Arith] -> a -> a
+subAriths :: SubstitutableArith t a => [TypedName] -> [Arith t] -> a -> a
 subAriths from to sa = foldr (uncurry subArith) sa $ zip from to
 
 
@@ -265,7 +313,7 @@ subAriths from to sa = foldr (uncurry subArith) sa $ zip from to
 class FreeVariables a where
   freeVars :: a -> Set TypedName
 
-instance FreeVariables Arith where
+instance FreeVariables (Arith t) where
   freeVars arith = case arith of
     Num _     -> Set.empty
     Var ident -> Set.singleton ident
@@ -276,7 +324,7 @@ instance FreeVariables Arith where
     Mod a1 a2 -> Set.union (freeVars a1) (freeVars a2)
     Pow a1 a2 -> Set.union (freeVars a1) (freeVars a2)
 
-instance FreeVariables Assertion where
+instance FreeVariables (Assertion t) where
   freeVars assertion = case assertion of
     ATrue        -> Set.empty
     AFalse       -> Set.empty
@@ -298,8 +346,8 @@ instance FreeVariables Assertion where
 -- Pretty Printer --
 --------------------
 
-instance Pretty Arith where
+instance SMTString t => Pretty (Arith t) where
   pretty = pretty . S8.unpack . toSMT
 
-instance Pretty Assertion where
+instance SMTString t => Pretty (Assertion t) where
   pretty = pretty . S8.unpack . toSMT

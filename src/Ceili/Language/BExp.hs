@@ -1,17 +1,22 @@
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Ceili.Language.BExp
   ( BExp(..)
-  , State
   , bexpToAssertion
-  , evalBExp
+  , eval
   ) where
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
-import Ceili.Language.AExp ( AExp(..), State, aexpToArith, evalAExp )
+import Ceili.Language.AExp ( AExp(..), aexpToArith )
+import Ceili.Evaluation
 import Ceili.Name
 import Ceili.Literal
+import Ceili.ProgState
 import qualified Data.Set as Set
 import Prettyprinter
 
@@ -20,21 +25,21 @@ import Prettyprinter
 -- Boolean Expressions --
 -------------------------
 
-data BExp
+data BExp t
   = BTrue
   | BFalse
-  | BNot BExp
-  | BAnd BExp BExp
-  | BOr  BExp BExp
-  | BEq  AExp AExp
-  | BNe  AExp AExp
-  | BLe  AExp AExp
-  | BGe  AExp AExp
-  | BLt  AExp AExp
-  | BGt  AExp AExp
-  deriving (Eq, Ord, Show)
+  | BNot (BExp t)
+  | BAnd (BExp t) (BExp t)
+  | BOr  (BExp t) (BExp t)
+  | BEq  (AExp t) (AExp t)
+  | BNe  (AExp t) (AExp t)
+  | BLe  (AExp t) (AExp t)
+  | BGe  (AExp t) (AExp t)
+  | BLt  (AExp t) (AExp t)
+  | BGt  (AExp t) (AExp t)
+  deriving (Eq, Ord, Show, Functor)
 
-instance CollectableNames BExp where
+instance CollectableNames (BExp t) where
   namesIn bexp = case bexp of
     BTrue        -> Set.empty
     BFalse       -> Set.empty
@@ -48,10 +53,10 @@ instance CollectableNames BExp where
     BLt  lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     BGt  lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
 
-instance CollectableTypedNames BExp where
+instance Integral t => CollectableTypedNames (BExp t) where
   typedNamesIn bexp = Set.map (\n -> TypedName n Int) $ namesIn bexp
 
-instance MappableNames BExp where
+instance MappableNames (BExp t) where
   mapNames _ BTrue        = BTrue
   mapNames _ BFalse       = BFalse
   mapNames f (BNot b)     = BNot $ mapNames f b
@@ -64,7 +69,7 @@ instance MappableNames BExp where
   mapNames f (BLt a1 a2)  = BLt (mapNames f a1) (mapNames f a2)
   mapNames f (BGt a1 a2)  = BGt (mapNames f a1) (mapNames f a2)
 
-instance FreshableNames BExp where
+instance FreshableNames (BExp t) where
   freshen bexp = case bexp of
     BTrue  -> return BTrue
     BFalse -> return BFalse
@@ -78,7 +83,7 @@ instance FreshableNames BExp where
     BLt  a1 a2 -> freshenBinop BLt  a1 a2
     BGt  a1 a2 -> freshenBinop BGt  a1 a2
 
-instance CollectableLiterals BExp where
+instance Ord t => CollectableLiterals (BExp t) t where
   litsIn bexp = case bexp of
     BTrue        -> Set.empty
     BFalse       -> Set.empty
@@ -92,7 +97,7 @@ instance CollectableLiterals BExp where
     BLt  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
     BGt  lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
 
-bexpToAssertion :: BExp -> Assertion
+bexpToAssertion :: BExp t -> Assertion t
 bexpToAssertion bexp = case bexp of
   BTrue      -> A.ATrue
   BFalse     -> A.AFalse
@@ -107,30 +112,33 @@ bexpToAssertion bexp = case bexp of
   BLt  a1 a2 -> A.Lt  (aexpToArith a1) (aexpToArith a2)
 
 
------------------
--- Interpreter --
------------------
+----------------
+-- Evaluation --
+----------------
 
-evalBExp :: State -> BExp -> Bool
-evalBExp st bexp = case bexp of
-  BTrue      -> True
-  BFalse     -> False
-  BNot b     -> not $ evalBExp st b
-  BAnd b1 b2 -> (evalBExp st b1) && (evalBExp st b2)
-  BOr  b1 b2 -> (evalBExp st b1) || (evalBExp st b2)
-  BEq  b1 b2 -> (evalAExp st b1) == (evalAExp st b2)
-  BNe  b1 b2 -> (evalAExp st b1) /= (evalAExp st b2)
-  BLe  b1 b2 -> (evalAExp st b1) <= (evalAExp st b2)
-  BGe  b1 b2 -> (evalAExp st b1) >= (evalAExp st b2)
-  BGt  b1 b2 -> (evalAExp st b1) >  (evalAExp st b2)
-  BLt  b1 b2 -> (evalAExp st b1) <  (evalAExp st b2)
+instance Integral t => Evaluable c t (BExp t) Bool where
+  eval ctx st bexp = case bexp of
+    BTrue      -> True
+    BFalse     -> False
+    BNot b     -> not $ eval ctx st b
+    BAnd b1 b2 -> (eval ctx st b1) && (eval ctx st b2)
+    BOr  b1 b2 -> (eval ctx st b1) || (eval ctx st b2)
+    BEq  a1 a2 -> ((eval ctx st a1) :: Integer) == (eval ctx st a2)
+    BNe  a1 a2 -> (evalInt ctx st a1) /= (evalInt ctx st a2)
+    BLe  a1 a2 -> (evalInt ctx st a1) <= (evalInt ctx st a2)
+    BGe  a1 a2 -> (evalInt ctx st a1) >= (evalInt ctx st a2)
+    BGt  a1 a2 -> (evalInt ctx st a1) >  (evalInt ctx st a2)
+    BLt  a1 a2 -> (evalInt ctx st a1) <  (evalInt ctx st a2)
+    where
+      evalInt :: Integral t => c -> ProgState t -> AExp t -> Integer
+      evalInt = eval
 
 
 --------------------
 -- Pretty Printer --
 --------------------
 
-instance Pretty BExp where
+instance Pretty t => Pretty (BExp t) where
   pretty bexp =
     case bexp of
       BTrue      -> "true"
@@ -145,7 +153,7 @@ instance Pretty BExp where
       BGt  b1 b2 -> pretty b1 <+> ">"  <+> pretty b2
       BLt  b1 b2 -> pretty b1 <+> "<"  <+> pretty b2
 
-maybeParens :: BExp -> Doc ann
+maybeParens :: Pretty t => (BExp t) -> Doc ann
 maybeParens bexp =
   case bexp of
     BTrue  -> pretty bexp

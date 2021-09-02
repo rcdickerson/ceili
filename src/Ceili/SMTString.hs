@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Ceili.SMTString
   ( SMTString(..)
   , showSMT
@@ -15,3 +17,6 @@ showSMT = unpack . toSMT
 instance SMTString a => SMTString (Maybe a) where
   toSMT Nothing  = pack "()"
   toSMT (Just x) = toSMT x
+
+instance SMTString Integer
+  where toSMT = pack . show

@@ -38,20 +38,22 @@ type FeatureVector = Vector Bool
 -- formula sizes before moving on to larger ones. If no possible combination of
 -- the given assertions separates the positive and negative samples, the
 -- algorithm will not terminate.
-learnBoolExpr :: Vector Assertion
+learnBoolExpr :: SMTString t =>
+                 Vector (Assertion t)
               -> Vector FeatureVector
               -> Vector FeatureVector
-              -> Ceili Assertion
+              -> Ceili (Assertion t)
 learnBoolExpr features posFV negFV = do
   log_d "[PAC] Begin learning boolean expression..."
   boolLearn features posFV negFV 1 Vector.empty
 
-boolLearn :: Vector Assertion
+boolLearn :: SMTString t =>
+             Vector (Assertion t)
           -> Vector FeatureVector
           -> Vector FeatureVector
           -> Int
           -> Vector Clause
-          -> Ceili Assertion
+          -> Ceili (Assertion t)
 boolLearn features posFV negFV k prevClauses = do
   log_d $ "[PAC] Looking at clauses of size " ++ show k
   let nextClauses    = clausesWithSize k $ Vector.length features
@@ -61,7 +63,7 @@ boolLearn features posFV negFV k prevClauses = do
   case mSolution of
     Just solution -> do
       let assertion = clausesToAssertion features $ Vector.toList solution
-      log_d $ "[PAC] Learned boolean expression: " ++ (showSMT assertion)
+      log_d $ "[PAC] Learned boolean expression: " ++ show assertion
       return $ assertion
     Nothing -> boolLearn features posFV negFV (k + 1) clauses
 
@@ -128,7 +130,7 @@ data ClauseOccur = CPos | CNeg
   deriving (Show, Ord, Eq)
 
 -- |Convert a Clause to an Assertion using its backing vector of available assertions.
-clauseToAssertion :: Vector Assertion -> Clause -> Assertion
+clauseToAssertion :: Vector (Assertion t) -> Clause -> (Assertion t)
 clauseToAssertion assertions clause = let
   toAssertion (idx, occur) = case occur of
     CPos -> assertions!idx
@@ -139,7 +141,7 @@ clauseToAssertion assertions clause = let
        as     -> Or as
 
 -- |Convert a list of Clause to an Assertion using a backing assertion vector.
-clausesToAssertion :: Vector Assertion -> [Clause] -> Assertion
+clausesToAssertion :: Vector (Assertion t) -> [Clause] -> (Assertion t)
 clausesToAssertion assertions clauses =
   case map (clauseToAssertion assertions) clauses of
     []     -> ATrue

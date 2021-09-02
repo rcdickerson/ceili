@@ -12,8 +12,6 @@ module Ceili.CeiliEnv
   , emptyEnv
   , envFreshen
   , findCounterexample
-  , getProgLits
-  , getProgNames
   , log_d
   , log_e
   , log_i
@@ -22,9 +20,10 @@ module Ceili.CeiliEnv
   , throwError
   ) where
 
-import Ceili.Assertion ( Assertion(..), parseAssertion )
+import Ceili.Assertion ( Assertion(..), AssertionParseable, parseAssertion )
 import Ceili.Name
 import qualified Ceili.SMT as SMT
+import Ceili.SMTString
 import Control.Concurrent.Timeout ( timeout )
 import Control.Monad.IO.Class ( liftIO )
 import Control.Monad.Except ( ExceptT, runExceptT, throwError )
@@ -37,8 +36,6 @@ data Env = Env { env_logger_debug :: LogType
                , env_logger_error :: LogType
                , env_logger_info  :: LogType
                , env_nextFreshIds :: NextFreshIds
-               , env_progNames    :: Set TypedName
-               , env_progLits     :: Set Integer
                , env_smtTimeoutMs :: Integer }
 
 data LogLevel = LogLevelDebug
@@ -51,21 +48,19 @@ type Ceili = StateT Env (ExceptT String IO)
 runCeili :: Env -> Ceili a -> IO (Either String a)
 runCeili env task = runExceptT (evalStateT task env)
 
-mkEnv :: LogLevel -> Set TypedName -> Set Integer -> Integer -> Env
-mkEnv minLogLevel names lits smtTimeoutMs =
+mkEnv :: LogLevel -> Integer -> Set TypedName -> Env
+mkEnv minLogLevel smtTimeoutMs names =
   Env { env_logger_debug = mkDebugLogType minLogLevel
       , env_logger_info  = mkInfoLogType minLogLevel
       , env_logger_error = mkErrorLogType minLogLevel
       , env_nextFreshIds = buildFreshIds names
-      , env_progNames    = names
-      , env_progLits     = lits
       , env_smtTimeoutMs = smtTimeoutMs }
 
-defaultEnv :: Set TypedName -> Set Integer -> Env
-defaultEnv names lits = mkEnv LogLevelInfo names lits 2000
+defaultEnv :: Set TypedName -> Env
+defaultEnv = mkEnv LogLevelInfo 2000
 
 emptyEnv :: Env
-emptyEnv = defaultEnv Set.empty Set.empty
+emptyEnv = defaultEnv Set.empty
 
 mkDebugLogType :: LogLevel -> LogType
 mkDebugLogType minLevel = case minLevel of
@@ -112,10 +107,10 @@ withTimeout t = do
   timeoutMs <- get >>= return . env_smtTimeoutMs
   liftIO $ timeout (1000 * timeoutMs) t
 
-checkValid :: Assertion -> Ceili SMT.ValidResult
+checkValid :: SMTString t => Assertion t -> Ceili SMT.ValidResult
 checkValid = checkValidWithLog LogLevelDebug
 
-checkValidB :: Assertion -> Ceili Bool
+checkValidB :: SMTString t => Assertion t -> Ceili Bool
 checkValidB assertion = do
   valid <- checkValid assertion
   case valid of
@@ -123,17 +118,17 @@ checkValidB assertion = do
     SMT.Invalid _    -> return False
     SMT.ValidUnknown -> return False
 
-checkValidWithLog :: LogLevel -> Assertion -> Ceili SMT.ValidResult
+checkValidWithLog :: SMTString t => LogLevel -> Assertion t -> Ceili SMT.ValidResult
 checkValidWithLog level assertion = do
   result  <- runWithLog level $ (\logger -> SMT.checkValidFL logger assertion)
   case result of
     Nothing -> do log_e "SMT timeout"; return SMT.ValidUnknown
     Just r  -> return r
 
-checkSat :: Assertion -> Ceili SMT.SatResult
+checkSat :: SMTString t => Assertion t -> Ceili SMT.SatResult
 checkSat = checkSatWithLog LogLevelDebug
 
-checkSatB :: Assertion -> Ceili Bool
+checkSatB :: SMTString t => Assertion t -> Ceili Bool
 checkSatB assertion = do
   sat <- checkSat assertion
   case sat of
@@ -141,7 +136,7 @@ checkSatB assertion = do
     SMT.Unsat      -> return False
     SMT.SatUnknown -> return False
 
-checkSatWithLog :: LogLevel -> Assertion -> Ceili SMT.SatResult
+checkSatWithLog :: SMTString t => LogLevel -> Assertion t -> Ceili SMT.SatResult
 checkSatWithLog level assertion = do
   result <- runWithLog level $ (\logger -> SMT.checkSatFL logger assertion)
   case result of
@@ -155,7 +150,7 @@ runWithLog level task = do
     withFastLogger logType $ \logger ->
     task logger
 
-findCounterexample :: Assertion -> Ceili (Maybe Assertion)
+findCounterexample :: (AssertionParseable t, SMTString t) => Assertion t -> Ceili (Maybe (Assertion t))
 findCounterexample assertion = do
   logType <- logTypeAt LogLevelDebug
   result <- withTimeout $
@@ -174,17 +169,7 @@ findCounterexample assertion = do
 
 envFreshen :: FreshableNames a => a -> Ceili a
 envFreshen a = do
-  Env logd loge logi nextIds names lits smtTimeout <- get
+  Env logd loge logi nextIds smtTimeout <- get
   let (nextIds', a') = runFreshen nextIds a
-  put $ Env logd loge logi nextIds' names lits smtTimeout
+  put $ Env logd loge logi nextIds' smtTimeout
   return a'
-
-getProgNames :: Ceili (Set TypedName)
-getProgNames = do
-  Env _ _ _ _ names _ _ <- get
-  return names
-
-getProgLits :: Ceili (Set Integer)
-getProgLits = do
-  Env _ _ _ _ _ lits _ <- get
-  return lits

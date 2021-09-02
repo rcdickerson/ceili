@@ -1,37 +1,27 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Ceili.FeatureLearning.Separator
   ( findSeparator
   ) where
 
-import Ceili.Assertion
+import Ceili.CeiliEnv
 import Ceili.SMTString
-import Ceili.State
-import Ceili.StatePredicate ( testState )
+import Ceili.ProgState
+import Ceili.StatePredicate
 import Data.Set ( Set )
 import qualified Data.Set as Set
-import Ceili.CeiliEnv
-import Data.Vector ( Vector )
-import qualified Data.Vector as Vector
 
-findSeparator :: Int
-              -> (Int -> Set Assertion)
-              -> Vector State
-              -> Vector State
-              -> Ceili (Maybe Assertion)
+findSeparator :: (SMTString p, SMTString s, StatePredicate p s) =>
+                 Int
+              -> (Int -> Set p)
+              -> [ProgState s]
+              -> [ProgState s]
+              -> Ceili (Maybe p)
 findSeparator maxCandidateSize candidatesOfSize goodTests badTests = let
-  acceptsGoods assertion = and $ Vector.toList $
-      Vector.map (\test -> testState assertion test) goodTests
-  rejectsBads assertion = and $ Vector.toList $
-      Vector.map (\test -> testState (Not assertion) test) badTests
-  firstThatSeparates assertions =
-    case assertions of
-      []   -> Nothing
-      a:as -> do
-        if acceptsGoods a && rejectsBads a
-          then Just a
-          else firstThatSeparates as
   featureLearn' size = do
     log_d $ "[Separator] Examining candidate separators of size " ++ show size
-    let mFeature = firstThatSeparates . Set.toList $ candidatesOfSize size
+    let candidates = Set.toList $ candidatesOfSize size
+    let mFeature = firstThatSeparates goodTests badTests candidates
     case mFeature of
       Nothing ->
         if size >= maxCandidateSize
@@ -42,9 +32,22 @@ findSeparator maxCandidateSize candidatesOfSize goodTests badTests = let
         return $ Just feature
   in do
     log_d   "[Separator] Beginning separator search"
-    log_d $ "[Separator]   Good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
-    log_d $ "[Separator]   Bad tests: "  ++ (show $ Vector.map (show . pretty) badTests)
+    log_d $ "[Separator]   Good tests: " ++ (show $ map prettySMTState goodTests)
+    log_d $ "[Separator]   Bad tests: "  ++ (show $ map prettySMTState badTests)
     featureLearn' 1
+
+firstThatSeparates :: StatePredicate p s
+                   => [ProgState s]
+                   -> [ProgState s]
+                   -> [p]
+                   -> Maybe p
+firstThatSeparates goodTests badTests assertions =
+  case assertions of
+    []   -> Nothing
+    a:as -> do
+      if acceptsAll goodTests a && rejectsAll badTests a
+        then Just a
+        else firstThatSeparates goodTests badTests as
 
 logMaxSizeReached :: Int -> Ceili ()
 logMaxSizeReached maxSize = log_d $

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1d8a0dbed8c0b5a2a554b5feead382275aa0891fe3e8963ca9ba593d00129afd
+-- hash: bbe421cc7516e70bd38aecfbc8fb821e9ff57435e64df5ec38c798d6a9aa785a
 
 name:           ceili
 version:        0.1.0.0
@@ -31,6 +31,7 @@ library
       Ceili.Assertion.AssertionLanguage
       Ceili.Assertion.AssertionParser
       Ceili.CeiliEnv
+      Ceili.Evaluation
       Ceili.FeatureLearning.LinearInequalities
       Ceili.FeatureLearning.PACBoolean
       Ceili.FeatureLearning.Separator
@@ -48,10 +49,10 @@ library
       Ceili.Language.ImpParser
       Ceili.Literal
       Ceili.Name
+      Ceili.ProgState
       Ceili.PTS
       Ceili.SMT
       Ceili.SMTString
-      Ceili.State
       Ceili.StatePredicate
   other-modules:
       Paths_ceili
@@ -71,6 +72,7 @@ library
     , text
     , transformers
     , unbounded-delays
+    , uuid
     , vector
   default-language: Haskell2010
 
@@ -113,6 +115,7 @@ test-suite ceili-test
     , text
     , transformers
     , unbounded-delays
+    , uuid
     , vector
   default-language: Haskell2010
 
@@ -143,5 +146,6 @@ test-suite ceili-verification-test
     , text
     , transformers
     , unbounded-delays
+    , uuid
     , vector
   default-language: Haskell2010
