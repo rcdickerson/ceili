@@ -1,5 +1,6 @@
 module Ceili.Language.AExpParser
-  ( aexpLanguageDef
+  ( AExpParseable(..)
+  , aexpLanguageDef
   , parseAExp
   ) where
 
@@ -28,14 +29,25 @@ aexpLanguageDef = Token.LanguageDef
   }
 
 lexer      = Token.makeTokenParser $ aexpLanguageDef
+float      = Token.float      lexer
 identifier = Token.identifier lexer
 integer    = Token.integer    lexer
 parens     = Token.parens     lexer
 reservedOp = Token.reservedOp lexer
 
+
+class AExpParseable t where
+  getAExpParser :: Parsec String s t
+
+instance AExpParseable Integer where
+  getAExpParser = integer
+
+instance AExpParseable Double where
+  getAExpParser = float
+
 type AExpParser s a = Parsec String s a
 
-parseAExp :: AExpParser s AExp
+parseAExp :: AExpParseable t => AExpParser s (AExp t)
 parseAExp = buildExpressionParser aOperators aTerm
 
 aOperators = [ [Infix  (reservedOp "^" >> return APow) AssocLeft]
@@ -46,9 +58,10 @@ aOperators = [ [Infix  (reservedOp "^" >> return APow) AssocLeft]
                 Infix  (reservedOp "-" >> return ASub) AssocLeft]
               ]
 
+aTerm :: AExpParseable t => AExpParser s (AExp t)
 aTerm =  parens parseAExp
      <|> (name >>= return . AVar)
-     <|> liftM ALit integer
+     <|> liftM ALit getAExpParser
 
 name :: AExpParser s Name
 name = identifier >>= (return . Name.fromString)

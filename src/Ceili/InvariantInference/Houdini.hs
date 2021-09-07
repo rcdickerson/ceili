@@ -13,17 +13,18 @@ import Ceili.CeiliEnv
 import Ceili.FeatureLearning.LinearInequalities
 import Ceili.Name ( TypedName )
 import qualified Ceili.SMT as SMT
-import Ceili.SMTString ( showSMT )
+import Ceili.SMTString
 import Control.Monad ( filterM )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
-infer :: Set TypedName
-      -> Set Integer
+infer :: (Num t, Ord t, SMTString t)
+      => Set TypedName
+      -> Set t
       -> Int
-      -> Assertion
-      -> (Assertion -> Ceili Assertion)
-      -> Ceili Assertion
+      -> Assertion t
+      -> (Assertion t -> Ceili (Assertion t))
+      -> Ceili (Assertion t)
 infer names lits size precond computeSP = do
   log_i "[Houdini] Beginning invariant inference with Houdini"
   log_d $ (show $ Set.size names) ++ " names, "
@@ -31,22 +32,24 @@ infer names lits size precond computeSP = do
   candidates <- findCandidates names lits size precond
   log_d $ "[Houdini] Filtered candidates: " ++ (show $ length candidates)
   inductiveClauses <- houdini candidates computeSP
-  log_i $ "[Houdini] Invariant: " ++ (showSMT $ And inductiveClauses)
+  log_i $ "[Houdini] Invariant: " ++ (show $ And inductiveClauses)
   return $ And inductiveClauses
 
-findCandidates :: Set TypedName
-               -> Set Integer
+findCandidates :: (Num t, Ord t, SMTString t)
+               => Set TypedName
+               -> Set t
                -> Int
-               -> Assertion
-               -> Ceili [Assertion]
+               -> Assertion t
+               -> Ceili [Assertion t]
 findCandidates names lits size precond = do
   let candidates = linearInequalities names lits size
   log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)
   filterM (checkValidB . Imp precond) $ Set.toList candidates
 
-houdini :: [Assertion]
-        -> (Assertion -> Ceili Assertion)
-        -> Ceili [Assertion]
+houdini :: SMTString t =>
+           [Assertion t]
+        -> (Assertion t -> Ceili (Assertion t))
+        -> Ceili [Assertion t]
 houdini candidates computeSP = do
   log_i $ "[Houdini] Starting pass with "
     ++ (show $ length candidates)

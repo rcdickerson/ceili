@@ -36,7 +36,7 @@ reservedOp = Token.reservedOp lexer
 
 type BExpParser s a = Parsec String s a
 
-parseBExp :: BExpParser s BExp
+parseBExp :: AExpParseable t => BExpParser s (BExp t)
 parseBExp = buildExpressionParser bOperators bTerm
 
 bOperators = [ [Prefix (reservedOp "!" >> return BNot)]
@@ -44,6 +44,7 @@ bOperators = [ [Prefix (reservedOp "!" >> return BNot)]
                 Infix  (reservedOp "||"  >> return BOr)  AssocLeft]
              ]
 
+bTerm :: AExpParseable t => BExpParser s (BExp t)
 bTerm = parens parseBExp
        <|> (reserved "true"  >> return (BTrue ))
        <|> (reserved "false" >> return (BFalse))
@@ -54,7 +55,7 @@ bTerm = parens parseBExp
        <|> (try $ bBinop "<"  BLt)
        <|> (try $ bBinop ">"  BGt)
 
-bBinop :: String -> (AExp -> AExp -> BExp) -> BExpParser s BExp
+bBinop :: AExpParseable t => String -> (AExp t -> AExp t -> BExp t) -> BExpParser s (BExp t)
 bBinop opStr opFun = do
   lhs <- parseAExp
   reservedOp opStr

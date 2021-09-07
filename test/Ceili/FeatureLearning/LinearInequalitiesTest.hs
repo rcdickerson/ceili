@@ -14,7 +14,7 @@ import qualified Data.Set as Set
 tni :: String -> TypedName
 tni s = TypedName (Name s 0) Int
 
-var :: String -> Arith
+var :: String -> Arith Integer
 var = Var . tni
 
 assertHasSameItems :: (Ord a, Show a) => Set a -> Set a -> IO ()

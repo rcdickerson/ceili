@@ -1,33 +1,36 @@
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Ceili.Language.AExp
   ( AExp(..)
-  , State
   , aexpToArith
-  , evalAExp
+  , eval
   ) where
 
 import qualified Ceili.Assertion.AssertionLanguage as A
+import Ceili.Evaluation
 import Ceili.Name
 import Ceili.Literal
 import Ceili.SMTString
-import Ceili.State
+import Ceili.ProgState
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Prettyprinter
 
-data AExp
-  = ALit Integer
+data AExp t
+  = ALit t
   | AVar Name
-  | AAdd AExp AExp
-  | ASub AExp AExp
-  | AMul AExp AExp
-  | ADiv AExp AExp
-  | AMod AExp AExp
-  | APow AExp AExp
-  deriving (Eq, Ord, Show)
+  | AAdd (AExp t) (AExp t)
+  | ASub (AExp t) (AExp t)
+  | AMul (AExp t) (AExp t)
+  | ADiv (AExp t) (AExp t)
+  | AMod (AExp t) (AExp t)
+  | APow (AExp t) (AExp t)
+  deriving (Eq, Ord, Show, Functor)
 
-instance CollectableNames AExp where
+instance CollectableNames (AExp t) where
   namesIn aexp = case aexp of
     ALit _ -> Set.empty
     AVar v -> Set.singleton v
@@ -38,10 +41,10 @@ instance CollectableNames AExp where
     AMod lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     APow lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
 
-instance CollectableTypedNames AExp where
+instance Integral t => CollectableTypedNames (AExp t) where
   typedNamesIn aexp = Set.map (\n -> TypedName n Int) $ namesIn aexp
 
-instance MappableNames AExp where
+instance MappableNames (AExp t) where
   mapNames f aexp = case aexp of
     ALit i       -> ALit i
     AVar v       -> AVar (f v)
@@ -52,7 +55,7 @@ instance MappableNames AExp where
     AMod lhs rhs -> AMod (mapNames f lhs) (mapNames f rhs)
     APow lhs rhs -> APow (mapNames f lhs) (mapNames f rhs)
 
-instance FreshableNames AExp where
+instance FreshableNames (AExp t) where
   freshen aexp = case aexp of
     ALit i -> return $ ALit i
     AVar v -> return . AVar =<< freshen v
@@ -63,7 +66,7 @@ instance FreshableNames AExp where
     AMod lhs rhs -> freshenBinop AMod lhs rhs
     APow lhs rhs -> freshenBinop APow lhs rhs
 
-instance CollectableLiterals AExp where
+instance Ord t => CollectableLiterals (AExp t) t where
   litsIn aexp = case aexp of
     ALit i -> Set.singleton i
     AVar _ -> Set.empty
@@ -74,7 +77,7 @@ instance CollectableLiterals AExp where
     AMod lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
     APow lhs rhs -> Set.union (litsIn lhs) (litsIn rhs)
 
-aexpToArith :: AExp -> A.Arith
+aexpToArith :: AExp t -> A.Arith t
 aexpToArith aexp = case aexp of
   ALit i           -> A.Num i
   AVar var         -> A.Var (TypedName var Int)
@@ -95,27 +98,27 @@ aexpToArith aexp = case aexp of
     in A.Pow base power
 
 
------------------
--- Interpreter --
------------------
+----------------
+-- Evaluation --
+----------------
 
-evalAExp :: State -> AExp -> Integer
-evalAExp st aexp = case aexp of
-  ALit i       -> i
-  AVar v       -> Map.findWithDefault 0 v st
-  AAdd lhs rhs -> (evalAExp st lhs) + (evalAExp st rhs)
-  ASub lhs rhs -> (evalAExp st lhs) - (evalAExp st rhs)
-  AMul lhs rhs -> (evalAExp st lhs) * (evalAExp st rhs)
-  ADiv lhs rhs -> (evalAExp st lhs) `quot` (evalAExp st rhs)
-  AMod lhs rhs -> (evalAExp st lhs) `mod` (evalAExp st rhs)
-  APow lhs rhs -> (evalAExp st lhs) ^ (evalAExp st rhs)
+instance Integral t => Evaluable c t (AExp t) Integer where
+  eval ctx st aexp = case aexp of
+    ALit i       -> fromIntegral i
+    AVar v       -> fromIntegral $ Map.findWithDefault 0 v st
+    AAdd lhs rhs -> (eval ctx st lhs) + (eval ctx st rhs)
+    ASub lhs rhs -> (eval ctx st lhs) - (eval ctx st rhs)
+    AMul lhs rhs -> (eval ctx st lhs) * (eval ctx st rhs)
+    ADiv lhs rhs -> (eval ctx st lhs) `quot` (eval ctx st rhs)
+    AMod lhs rhs -> (eval ctx st lhs) `mod` (eval ctx st rhs)
+    APow lhs rhs -> (eval ctx st lhs) ^ (eval ctx st rhs)
 
 
 --------------------
 -- Pretty Printer --
 --------------------
 
-instance Pretty AExp where
+instance Pretty t => Pretty (AExp t) where
   pretty aexp =
     case aexp of
       ALit i -> pretty i
@@ -127,7 +130,7 @@ instance Pretty AExp where
       AMod lhs rhs -> maybeParens lhs <+> "%" <+> maybeParens rhs
       APow lhs rhs -> maybeParens lhs <+> "^" <+> maybeParens rhs
 
-maybeParens :: AExp -> Doc ann
+maybeParens :: Pretty t => (AExp t) -> Doc ann
 maybeParens aexp =
   case aexp of
     ALit _ -> pretty aexp

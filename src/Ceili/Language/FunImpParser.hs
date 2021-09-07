@@ -3,8 +3,9 @@ module Ceili.Language.FunImpParser
   , parseFunImp
   ) where
 
+import Ceili.Assertion ( AssertionParseable )
 import Ceili.Language.AExp
-import Ceili.Language.AExpParser ( parseAExp )
+import Ceili.Language.AExpParser ( AExpParseable, parseAExp )
 import Ceili.Language.FunImp
 import qualified Ceili.Language.Imp as Imp
 import qualified Ceili.Language.ImpParser as ImpParser
@@ -14,8 +15,8 @@ import qualified Data.Map as Map
 import Text.Parsec
 import qualified Text.Parsec.Token as Token
 
-type FunImpParser a = Parsec String (FunImplEnv FunImpProgram) a
-type ProgramParser = FunImpParser FunImpProgram
+type FunImpParser t a = Parsec String (FunImplEnv (FunImpProgram t)) a
+type ProgramParser t = FunImpParser t (FunImpProgram t)
 
 funImpLanguageDef :: Token.LanguageDef a
 funImpLanguageDef = ImpParser.impLanguageDef {
@@ -34,15 +35,21 @@ reservedOp = Token.reservedOp lexer
 semi       = Token.semi       lexer
 whiteSpace = Token.whiteSpace lexer
 
-parseFunImp :: String -> Either ParseError (FunImplEnv FunImpProgram)
+parseFunImp :: ( Num t
+               , AExpParseable t
+               , AssertionParseable t)
+            => String -> Either ParseError (FunImplEnv (FunImpProgram t))
 parseFunImp str = runParser program Map.empty "" str
 
-program :: FunImpParser (FunImplEnv FunImpProgram)
+program :: ( Num t
+           , AExpParseable t
+           , AssertionParseable t )
+        => FunImpParser t (FunImplEnv (FunImpProgram t))
 program = do
   _ <- many1 $ whiteSpace >> funDef
   getState
 
-statement :: ProgramParser
+statement :: (AExpParseable t, AssertionParseable t) => ProgramParser t
 statement = try funCall
         <|> ImpParser.parseIf lexer statement
         <|> ImpParser.parseWhile lexer statement
@@ -50,7 +57,7 @@ statement = try funCall
         <|> ImpParser.parseAsgn lexer
         <|> parens statement
 
-funDef :: FunImpParser ()
+funDef :: (Num t, AExpParseable t, AssertionParseable t) => FunImpParser t ()
 funDef = do
   reserved "fun"
   handle <- identifier
@@ -58,7 +65,8 @@ funDef = do
   (body, rets) <- braces (funBody handle)
   recordFunDef handle params body rets
 
-funBody :: Name.Handle -> FunImpParser (FunImpProgram, [Name])
+funBody :: (Num t, AExpParseable t, AssertionParseable t)
+        => Name.Handle -> FunImpParser t ((FunImpProgram t), [Name])
 funBody cid = do
   bodyStmts <- many statement
   retExprs  <- option [ALit 0] returnStatement
@@ -73,7 +81,7 @@ funBody cid = do
       body     = bodyStmts ++ asgns
   return (Imp.impSeq body, retNames)
 
-returnStatement :: FunImpParser [AExp]
+returnStatement :: AExpParseable t => FunImpParser t [AExp t]
 returnStatement = do
   reserved "return"
   retExprs <- try varArrayOrAExp
@@ -81,7 +89,7 @@ returnStatement = do
   _ <- semi
   return retExprs
 
-funCall :: ProgramParser
+funCall :: AExpParseable t => ProgramParser t
 funCall = do
   assignees <- (try nameTuple) <|> nameArrayOrName
   reservedOp ":="
@@ -90,12 +98,12 @@ funCall = do
   _ <- semi
   return $ impCall funName args assignees
 
-nameTuple :: FunImpParser [Name]
+nameTuple :: FunImpParser t [Name]
 nameTuple = do
   names <- parens $ sepBy nameArrayOrName comma
   return $ concat names
 
-nameArray :: FunImpParser [Name]
+nameArray :: FunImpParser t [Name]
 nameArray = do
   var <- name
   char '[' >> whiteSpace
@@ -106,30 +114,30 @@ nameArray = do
     _ -> let (Name vname i) = var
          in map (\n -> Name (vname ++ "_" ++ (show n)) i) [0..(num-1)]
 
-nameArrayOrName :: FunImpParser [Name]
+nameArrayOrName :: FunImpParser t [Name]
 nameArrayOrName = (try nameArray) <|> (do n <- name; return [n])
 
-varArray :: FunImpParser [AExp]
+varArray :: FunImpParser t [AExp t]
 varArray = do
   names <- nameArray
   return $ map AVar names
 
-aexpTuple :: FunImpParser [AExp]
+aexpTuple :: AExpParseable t => FunImpParser t [AExp t]
 aexpTuple = do
   args <- parens $ sepBy varArrayOrAExp comma
   return $ concat args
 
-varArrayOrAExp :: FunImpParser [AExp]
+varArrayOrAExp :: AExpParseable t => FunImpParser t [AExp t]
 varArrayOrAExp = (try varArray) <|> (do aexp <- parseAExp; return [aexp])
 
-name :: FunImpParser Name
+name :: FunImpParser t Name
 name = identifier >>= (return . Name.fromString)
 
 recordFunDef :: Name.Handle
              -> [Name]
-             -> FunImpProgram
+             -> FunImpProgram t
              -> [Name]
-             -> FunImpParser ()
+             -> FunImpParser t ()
 recordFunDef handle params body rets = do
   funs <- getState
   putState $ Map.insert handle (FunImpl params body rets) funs

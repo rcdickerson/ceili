@@ -9,7 +9,8 @@ module Ceili.SMT
 
 import qualified Ceili.Assertion as C
 import Ceili.Name ( TypedName(..), Type(..) )
-import Ceili.SMTString ( showSMT )
+import Ceili.SMTString ( SMTString, toSMT )
+import Data.ByteString.Char8 ( unpack )
 import Data.IORef ( newIORef, modifyIORef', readIORef )
 import qualified Data.Set as Set
 import qualified SimpleSMT as SSMT
@@ -18,17 +19,17 @@ import qualified System.Log.FastLogger as FL
 data SatResult = Sat String | Unsat | SatUnknown
 data ValidResult = Valid | Invalid String | ValidUnknown
 
-checkValid :: C.Assertion -> IO ValidResult
+checkValid :: SMTString t => C.Assertion t -> IO ValidResult
 checkValid assertion = do
   logger <- SSMT.newLogger 0
   checkValidWithLogger logger assertion
 
-checkValidFL :: FL.FastLogger -> C.Assertion -> IO ValidResult
+checkValidFL :: SMTString t => FL.FastLogger -> C.Assertion t -> IO ValidResult
 checkValidFL fastLogger assertion = do
   ssmtLogger <- fastLoggerAdapter fastLogger
   checkValidWithLogger ssmtLogger assertion
 
-checkValidWithLogger :: SSMT.Logger -> C.Assertion -> IO ValidResult
+checkValidWithLogger :: SMTString t => SSMT.Logger -> C.Assertion t -> IO ValidResult
 checkValidWithLogger logger assertion = do
   satResult <- checkSatWithLogger logger $ C.Not assertion
   return $ case satResult of
@@ -36,17 +37,17 @@ checkValidWithLogger logger assertion = do
     Unsat      -> Valid
     SatUnknown -> ValidUnknown
 
-checkSat :: C.Assertion -> IO SatResult
+checkSat :: SMTString t => C.Assertion t -> IO SatResult
 checkSat assertion = do
   logger <- SSMT.newLogger 0
   checkSatWithLogger logger assertion
 
-checkSatFL :: FL.FastLogger -> C.Assertion -> IO SatResult
+checkSatFL :: SMTString t => FL.FastLogger -> C.Assertion t -> IO SatResult
 checkSatFL fastLogger assertion = do
   ssmtLogger <- fastLoggerAdapter fastLogger
   checkSatWithLogger ssmtLogger assertion
 
-checkSatWithLogger :: SSMT.Logger -> C.Assertion -> IO SatResult
+checkSatWithLogger :: SMTString t => SSMT.Logger -> C.Assertion t -> IO SatResult
 checkSatWithLogger logger assertion = do
     solver <- (SSMT.newSolver "z3" ["-in"]) $ Just logger
     declareFVs solver assertion
@@ -75,16 +76,16 @@ fastLoggerAdapter fastLogger = do
     , SSMT.logUntab    = modifyIORef' tab (subtract 2)
     }
 
-declareFVs :: SSMT.Solver -> C.Assertion -> IO ()
+declareFVs :: SSMT.Solver -> C.Assertion t -> IO ()
 declareFVs solver assertion = let
   fvs         = Set.toList $ C.freeVars assertion
   declareVars = map toDeclareConst fvs
   in mapM_ (SSMT.ackCommand solver) declareVars
 
-toSSMT :: C.Assertion -> SSMT.SExpr
-toSSMT = SSMT.Atom . showSMT
+toSSMT :: SMTString t => C.Assertion t -> SSMT.SExpr
+toSSMT = SSMT.Atom . unpack . toSMT
 
 toDeclareConst :: TypedName -> SSMT.SExpr
 toDeclareConst (TypedName name typ) = case typ of
-  Bool -> SSMT.Atom $ "(declare-const " ++ showSMT name ++ " Bool)"
-  Int  -> SSMT.Atom $ "(declare-const " ++ showSMT name ++ " Int)"
+  Bool -> SSMT.Atom $ "(declare-const " ++ (unpack $ toSMT name) ++ " Bool)"
+  Int  -> SSMT.Atom $ "(declare-const " ++ (unpack $ toSMT name) ++ " Int)"

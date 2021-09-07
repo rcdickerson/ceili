@@ -8,5 +8,5 @@ module Ceili.PTS
 import Ceili.Assertion ( Assertion )
 import Ceili.CeiliEnv ( Ceili )
 
-type BackwardPT c p = c -> p -> Assertion -> Ceili Assertion
-type ForwardPT  c p = c -> p -> Assertion -> Ceili Assertion
+type BackwardPT c p t = c -> p -> Assertion t -> Ceili (Assertion t)
+type ForwardPT  c p t = c -> p -> Assertion t -> Ceili (Assertion t)

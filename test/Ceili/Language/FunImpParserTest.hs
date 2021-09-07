@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Ceili.Language.FunImpParserTest(htf_thisModulesTests) where
 
@@ -6,7 +7,6 @@ import Test.Framework
 
 import Ceili.Language.FunImp
 import Ceili.Language.FunImpParser
-import Ceili.Language.Imp
 import qualified Data.Map as Map
 
 -- Some dummy names / vars for convenience
@@ -23,7 +23,7 @@ test_funDef = let
   prog = "fun foo(x) { x := 0; return x; }"
   expected = Map.fromList
     [("foo", FunImpl{ fimpl_params = [x],
-                      fimpl_body = impSeq [
+                      fimpl_body = impSeq @Integer [
                          impAsgn x (ALit 0),
                          impAsgn (Name "foo!retVal" 0) (AVar x)],
                       fimpl_returns = [Name "foo!retVal" 0]})]
@@ -34,7 +34,7 @@ test_twoFuns = let
         \ fun bar(y) { y := 5; return y; }"
   expected = Map.fromList
     [("foo", FunImpl{ fimpl_params = [x],
-                      fimpl_body = impSeq [
+                      fimpl_body = impSeq @Integer [
                          impAsgn x (ALit 0),
                          impAsgn (Name "foo!retVal" 0) (AVar x)],
                       fimpl_returns = [Name "foo!retVal" 0]}),
@@ -49,7 +49,7 @@ test_funCall = let
   prog = "fun foo(x) { x := foo(x); return x; }"
   expected = Map.fromList
     [("foo", FunImpl{ fimpl_params = [x],
-                      fimpl_body = impSeq [
+                      fimpl_body = impSeq @Integer [
                          impCall "foo" [AVar x] [x],
                          impAsgn (Name "foo!retVal" 0) (AVar x)],
                       fimpl_returns = [Name "foo!retVal" 0]})]

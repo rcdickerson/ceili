@@ -1,4 +1,6 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Ceili.InvariantInference.PieVerificationTests(htf_thisModulesTests) where
 
@@ -12,17 +14,21 @@ import Ceili.Language.Imp
 import Ceili.Literal
 import Ceili.Name
 import qualified Ceili.SMT as SMT
+import Ceili.SMTString
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import System.Log.FastLogger
 
-env :: ImpProgram -> Assertion -> Env
-env prog post = defaultEnv names lits
-  where
-    names = Set.union (typedNamesIn prog) (typedNamesIn post)
-    lits  = Set.union (litsIn prog) (litsIn post)
+data EmptyPieContextProvider = EmptyPieContextProvider
+instance ImpPieContextProvider EmptyPieContextProvider Integer where
+  impPieCtx _ = ImpPieContext Map.empty Set.empty Set.empty
 
-assertEquivalent :: Assertion -> Assertion -> IO ()
+env :: ImpProgram t -> Assertion t -> Env
+env prog post = defaultEnv names
+  where
+    names = Set.union (namesIn prog) (namesIn post)
+
+assertEquivalent :: SMTString t => Assertion t -> Assertion t -> IO ()
 assertEquivalent a1 a2 = do
   let iff = And [ Imp a1 a2, Imp a2 a1 ]
   result <- withFastLogger LogNone $ \logger ->
@@ -32,7 +38,7 @@ assertEquivalent a1 a2 = do
     SMT.Invalid s    -> assertFailure s
     SMT.ValidUnknown -> assertFailure "Unable to establish equivalence."
 
-runAndAssertEquivalent :: Env -> Assertion -> Ceili (Maybe Assertion) -> IO ()
+runAndAssertEquivalent :: SMTString t => Env -> Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
 runAndAssertEquivalent env expected actual = do
   result <- runCeili env actual
   case result of
@@ -51,10 +57,12 @@ test_loopInvGen = let
   m = Name "m" 0
   tn n = TypedName n Int
   var n = Var $ tn n
-  cond = BNe (AVar x) (ALit 0)
-  body = (impSeq [ impAsgn y $ ASub (AVar y) (ALit 1)
-                 , impAsgn x $ ASub (AVar x) (ALit 1)]) :: ImpProgram
+  cond = BNe (AVar x) (ALit @Integer 0)
+  body = impSeq [ impAsgn y $ ASub (AVar y) (ALit @Integer 1)
+                , impAsgn x $ ASub (AVar x) (ALit @Integer 1)]
   post = (Eq (var y) (Sub [var n, var m]))
+  names = Set.union (typedNamesIn body) (typedNamesIn post)
+  lits = litsIn body
   -- Loop will always start in a state where x = m and y = n.
   tests = [ Map.fromList [(x, 0), (y, 0), (m, 0), (n, 0)]
           , Map.fromList [(x, 5), (y, 3), (m, 5), (n, 3)]
@@ -63,4 +71,4 @@ test_loopInvGen = let
   expected = Eq (Sub [var y, var x])
                 (Sub [var n, var m])
   in runAndAssertEquivalent (env body post) expected
-     $ loopInvGen impBackwardPT () (bexpToAssertion cond) body post tests
+     $ loopInvGen names lits impBackwardPT EmptyPieContextProvider (bexpToAssertion cond) body post tests

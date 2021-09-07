@@ -1,5 +1,7 @@
 module Ceili.Assertion.AssertionParser
-  ( ParseError
+  ( AssertionParseable(..)
+  , ParseContext(..)
+  , ParseError
   , arithParser
   , assertionParser
   , parseArith
@@ -15,7 +17,7 @@ import           Text.Parsec
 import           Text.Parsec.Language
 import qualified Text.Parsec.Token as Token
 
-languageDef :: LanguageDef ()
+languageDef :: LanguageDef (ParseContext t)
 languageDef = Token.LanguageDef
   { Token.caseSensitive   = True
   , Token.commentStart    = ""
@@ -44,6 +46,7 @@ languageDef = Token.LanguageDef
 
 lexer = Token.makeTokenParser languageDef
 
+float      = Token.float    lexer
 identifier = Token.identifier lexer
 reserved   = Token.reserved   lexer
 reservedOp = Token.reservedOp lexer
@@ -53,40 +56,53 @@ comma      = Token.comma      lexer
 semi       = Token.semi       lexer
 whitespace = Token.whiteSpace lexer
 
-type AssertionParser = Parsec String () Assertion
-type ArithParser     = Parsec String () Arith
-type TNameParser     = Parsec String () TypedName
-type NameParser      = Parsec String () Name
-type TypeParser      = Parsec String () Type
 
-parseAssertion :: String -> Either ParseError Assertion
-parseAssertion assertStr = runParser assertionParser () "" assertStr
+class AssertionParseable t where
+  getAssertionParser :: LiteralParser t
 
-parseArith :: String -> Either ParseError Arith
-parseArith arithStr = runParser arithParser () "" arithStr
+instance AssertionParseable Integer where
+  getAssertionParser = integer
 
-assertionParser :: AssertionParser
+instance AssertionParseable Double where
+  getAssertionParser = float
+
+data ParseContext t = ParseContext { pc_literalParser :: LiteralParser t }
+
+type LiteralParser t   = Parsec String (ParseContext t) t
+type AssertionParser t = Parsec String (ParseContext t) (Assertion t)
+type ArithParser t     = Parsec String (ParseContext t) (Arith t)
+type TNameParser t     = Parsec String (ParseContext t) TypedName
+type NameParser t      = Parsec String (ParseContext t) Name
+type TypeParser t      = Parsec String (ParseContext t) Type
+
+parseAssertion :: AssertionParseable t => String -> Either ParseError (Assertion t)
+parseAssertion assertStr = runParser assertionParser (ParseContext getAssertionParser) "" assertStr
+
+parseArith :: AssertionParseable t => String -> Either ParseError (Arith t)
+parseArith arithStr = runParser arithParser (ParseContext getAssertionParser) "" arithStr
+
+assertionParser :: AssertionParser t
 assertionParser = whitespace >> (try model <|> boolExpr)
 
-arithParser :: ArithParser
+arithParser :: ArithParser t
 arithParser = whitespace >> arithExpr
 
-boolExpr :: AssertionParser
+boolExpr :: AssertionParser t
 boolExpr = try forall
        <|> try exists
        <|> try boolApp
        <|> try boolLit
        <|> boolVar
 
-arithExpr :: ArithParser
+arithExpr :: ArithParser t
 arithExpr = try arithApp
         <|> try arithLit
         <|> arithVar
 
-name :: NameParser
+name :: NameParser t
 name = identifier >>= (return . Name.fromString)
 
-boolLit :: AssertionParser
+boolLit :: AssertionParser t
 boolLit = do
   b <- identifier
   whitespace
@@ -95,21 +111,21 @@ boolLit = do
     "false"-> return A.AFalse
     _       -> fail $ "expected a boolean literal, got: " ++ b
 
-boolVar :: AssertionParser
+boolVar :: AssertionParser t
 boolVar = do
   n <- name
   return $ A.Atom $ TypedName n Bool
 
-arithLit :: ArithParser
-arithLit = int <|> parens int
+arithLit :: ArithParser t
+arithLit = lit <|> parens lit
 
-arithVar :: ArithParser
+arithVar :: ArithParser t
 arithVar = do
   n <- name
   whitespace
   return . A.Var $ TypedName n Int
 
-forall :: AssertionParser
+forall :: AssertionParser t
 forall = do
   char '(' >> whitespace
   reserved "forall"
@@ -118,7 +134,7 @@ forall = do
   char ')' >> whitespace
   return $ A.Forall vars body
 
-exists :: AssertionParser
+exists :: AssertionParser t
 exists = do
   char '(' >> whitespace
   reserved "exists"
@@ -127,7 +143,7 @@ exists = do
   char ')' >> whitespace
   return $ A.Exists vars body
 
-quantVar :: TNameParser
+quantVar :: TNameParser t
 quantVar = do
   char '(' >> whitespace
   n <- name
@@ -136,12 +152,12 @@ quantVar = do
   char ')' >> whitespace
   return $ TypedName n ty
 
-typeFromString :: String -> TypeParser
+typeFromString :: String -> TypeParser t
 typeFromString str = case map toLower str of
   "int" -> return Int
   _     -> fail $ "Unknown sort: " ++ str
 
-boolApp :: AssertionParser
+boolApp :: AssertionParser t
 boolApp = do
   char '(' >> whitespace
   parsedApp <- do (try $ bArithApp2 ">="  A.Gte)
@@ -157,7 +173,7 @@ boolApp = do
   char ')' >> whitespace
   return parsedApp
 
-bArithApp2 :: String -> (Arith -> Arith -> Assertion) -> AssertionParser
+bArithApp2 :: String -> (Arith t -> Arith t -> Assertion t) -> AssertionParser t
 bArithApp2 fname fun = do
   reserved fname >> whitespace
   operands <- many arithExpr
@@ -166,7 +182,7 @@ bArithApp2 fname fun = do
     applyFun (a1 : a2 : []) = return $ fun a1 a2
     applyFun _ = fail $ fname ++ " takes two arguments"
 
-boolApp1 :: String -> (Assertion -> Assertion) -> AssertionParser
+boolApp1 :: String -> (Assertion t -> Assertion t) -> AssertionParser t
 boolApp1 fname fun = do
   reserved fname >> whitespace
   operands <- many boolExpr
@@ -175,7 +191,7 @@ boolApp1 fname fun = do
     applyFun (a:[]) = return $ fun a
     applyFun _ = fail $ fname ++ " takes one argument"
 
-boolApp2 :: String -> (Assertion -> Assertion -> Assertion) -> AssertionParser
+boolApp2 :: String -> (Assertion t -> Assertion t -> Assertion t) -> AssertionParser t
 boolApp2 fname fun = do
   reserved fname >> whitespace
   operands <- many boolExpr
@@ -184,13 +200,13 @@ boolApp2 fname fun = do
     applyFun (a1:a2:[]) = return $ fun a1 a2
     applyFun _ = fail $ fname ++ " takes two arguments"
 
-boolAppN :: String -> ([Assertion] -> Assertion) -> AssertionParser
+boolAppN :: String -> ([Assertion t] -> Assertion t) -> AssertionParser t
 boolAppN fname fun = do
   reserved fname >> whitespace
   operands <- many boolExpr
   return $ fun operands
 
-arithApp :: ArithParser
+arithApp :: ArithParser t
 arithApp = do
   char '(' >> whitespace
   parsedApp <- do aArithAppN        "+"   A.Add
@@ -203,11 +219,12 @@ arithApp = do
   char ')' >> whitespace
   return parsedApp
 
-int :: ArithParser
-int =
-  (return . A.Num . fromIntegral) =<< integer
+lit :: ArithParser t
+lit = do
+  (ParseContext litParser) <- getState
+  (return . A.Num) =<< litParser
 
-aArithApp2 :: String -> (Arith -> Arith -> Arith) -> ArithParser
+aArithApp2 :: String -> (Arith t -> Arith t -> Arith t) -> ArithParser t
 aArithApp2 fname fun = do
   reserved fname >> whitespace
   operands <- many arithExpr
@@ -216,7 +233,7 @@ aArithApp2 fname fun = do
     applyFun (a1 : a2 : []) = return $ fun a1 a2
     applyFun _ = fail $ fname ++ " takes two arithmetical arguments"
 
-aArithAppAtLeast2 :: String -> ([Arith] -> Arith) -> ArithParser
+aArithAppAtLeast2 :: String -> ([Arith t] -> Arith t) -> ArithParser t
 aArithAppAtLeast2 fname fun = do
   reserved fname >> whitespace
   operands <- many arithExpr
@@ -225,13 +242,13 @@ aArithAppAtLeast2 fname fun = do
     _:[] -> fail $ fname ++ " takes at least two arguments"
     _ -> return $ fun operands
 
-aArithAppN :: String -> ([Arith] -> Arith) -> ArithParser
+aArithAppN :: String -> ([Arith t] -> Arith t) -> ArithParser t
 aArithAppN fname fun = do
   reserved fname >> whitespace
   operands <- many arithExpr
   return $ fun operands
 
-model :: AssertionParser
+model :: AssertionParser t
 model = parens $ do
   reserved "model"
   defs <- many defineFun
@@ -240,7 +257,7 @@ model = parens $ do
     (tn, arith):[] -> A.Eq (A.Var tn) arith
     _ -> A.And $ map (\(tn, arith) -> A.Eq (A.Var tn) arith) defs
 
-defineFun :: Parsec String () (TypedName, Arith)
+defineFun :: Parsec String (ParseContext t) (TypedName, Arith t)
 defineFun = parens $ do
   reserved "define-fun"
   funName <- name
