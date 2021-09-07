@@ -1,4 +1,7 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Ceili.ImpVerificationTests(htf_thisModulesTests) where
 
 import Test.Framework
@@ -16,8 +19,8 @@ import System.FilePath
 
 data ExpectResult = ExpectSuccess | ExpectFailure
 
-envFromProg :: ImpProgram -> Env
-envFromProg prog = defaultEnv (typedNamesIn prog) (litsIn prog)
+envFromProg :: ImpProgram t -> Env
+envFromProg prog = defaultEnv (namesIn prog)
 
 assertSMTResult expected result =
   case (expected, result) of
@@ -47,13 +50,14 @@ readImpFile fileName = do
          </> "imp"
          </> fileName
 
+readAndParse :: String -> IO (ImpProgram Integer)
 readAndParse path = do
   progStr <- readImpFile path
   case parseImp progStr of
     Left  err     -> assertFailure $ "Parse error: " ++ (show err)
-    Right program -> return program
+    Right program -> populateLoopIds @(ImpProgram Integer) @Integer program
 
-mkTestStartStates :: CollectableNames n => n -> [State]
+mkTestStartStates :: CollectableNames n => n -> [ProgState Integer]
 mkTestStartStates cnames =
   let names = Set.toList $ namesIn cnames
   in [ Map.fromList $ map (\n -> (n, 0)) names
@@ -61,6 +65,7 @@ mkTestStartStates cnames =
      , Map.fromList $ map (\n -> (n, -1)) names
      ]
 
+runForward :: ExpectResult -> String -> Assertion Integer -> Assertion Integer -> IO ()
 runForward expectedResult progFile pre post = do
   prog <- readAndParse progFile
   assertRunsWithoutErrors (envFromProg prog) (impForwardPT () prog pre) $
@@ -68,11 +73,13 @@ runForward expectedResult progFile pre post = do
       smtResult <- SMT.checkValid $ Imp result post
       assertSMTResult expectedResult smtResult
 
+runBackward :: ExpectResult -> String -> Assertion Integer -> Assertion Integer -> IO ()
 runBackward expectedResult progFile pre post = do
   prog <- readAndParse progFile
   let findWP = do
-        progWithTests <- populateTestStates (Fuel 1000) (mkTestStartStates prog) prog
-        impBackwardPT () progWithTests post
+        loopHeadStates <- collectLoopHeadStates (Fuel 1000) (mkTestStartStates prog) prog
+        let ctx = ImpPieContext loopHeadStates (typedNamesIn prog) (litsIn prog)
+        impBackwardPT ctx prog post
   assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do
       smtResult <- SMT.checkValid $ Imp pre result

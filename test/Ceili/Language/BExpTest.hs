@@ -1,8 +1,10 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Ceili.Language.BExpTest(htf_thisModulesTests) where
 import Test.Framework
 
+import Ceili.Evaluation
 import Ceili.Language.AExp
 import Ceili.Language.BExp
 import Ceili.Name
@@ -10,6 +12,8 @@ import qualified Data.Map as Map
 
 mkSt assocList = Map.fromList $ map (\(n,v) -> (Name n 0, v)) assocList
 name n = Name n 0
+
+evalBExp = eval @() @Integer @(BExp Integer) @Bool ()
 
 test_evalBExp_Lit = do
   assertEqual True  $ evalBExp Map.empty BTrue

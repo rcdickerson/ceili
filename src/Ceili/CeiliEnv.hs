@@ -48,7 +48,7 @@ type Ceili = StateT Env (ExceptT String IO)
 runCeili :: Env -> Ceili a -> IO (Either String a)
 runCeili env task = runExceptT (evalStateT task env)
 
-mkEnv :: LogLevel -> Integer -> Set TypedName -> Env
+mkEnv :: LogLevel -> Integer -> Set Name -> Env
 mkEnv minLogLevel smtTimeoutMs names =
   Env { env_logger_debug = mkDebugLogType minLogLevel
       , env_logger_info  = mkInfoLogType minLogLevel
@@ -56,7 +56,7 @@ mkEnv minLogLevel smtTimeoutMs names =
       , env_nextFreshIds = buildFreshIds names
       , env_smtTimeoutMs = smtTimeoutMs }
 
-defaultEnv :: Set TypedName -> Env
+defaultEnv :: Set Name -> Env
 defaultEnv = mkEnv LogLevelInfo 2000
 
 emptyEnv :: Env

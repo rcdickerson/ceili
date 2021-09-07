@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -19,17 +20,21 @@ module Ceili.Language.Imp
   , ImpExpr(..)
   , ImpForwardPT(..)
   , ImpIf(..)
-  , ImpPieContext(..)
+  , ImpPieContext(..) -- TODO: Move to PIE module?
+  , ImpPieContextProvider(..)
   , ImpProgram
   , ImpSeq(..)
   , ImpSkip(..)
+  , ImpStep
   , ImpWhile(..)
   , ImpWhileMetadata(..)
   , IterStateMap
   , LoopHeadStates
   , Name(..)
   , ProgState
+  , TransformMetadata(..)
   , emptyWhileMetadata
+  , eval
   , impAsgn
   , impIf
   , impSeq
@@ -38,6 +43,8 @@ module Ceili.Language.Imp
   , impWhile
   , impWhileWithMeta
   , inject
+  , populateLoopIds
+  , repopulateLoopIds
   , unionIterStates
   ) where
 
@@ -125,6 +132,50 @@ instance FreshableNames (ImpWhileMetadata t) where
     invar'   <- freshen invar
     measure' <- freshen measure
     return $ ImpWhileMetadata loopId invar' measure'
+
+class Monad m => TransformMetadata m a t where
+  transformMetadata :: a -> (ImpWhileMetadata t -> m (ImpWhileMetadata t)) -> m a
+instance Monad m => TransformMetadata m (ImpSkip t e) t where
+  transformMetadata skip _ = return skip
+instance Monad m => TransformMetadata m (ImpAsgn t e) t where
+  transformMetadata asgn _ = return asgn
+instance TransformMetadata m e t => TransformMetadata m (ImpSeq t e) t where
+  transformMetadata (ImpSeq stmts) f = do
+    stmts' <- sequence $ map (\s -> transformMetadata s f) stmts
+    return $ ImpSeq stmts'
+instance TransformMetadata m e t => TransformMetadata m (ImpIf t e) t where
+  transformMetadata (ImpIf cond tbranch fbranch) f = do
+    tbranch' <- transformMetadata tbranch f
+    fbranch' <- transformMetadata fbranch f
+    return $ ImpIf cond tbranch' fbranch'
+instance TransformMetadata m e t => TransformMetadata m (ImpWhile t e) t where
+  transformMetadata (ImpWhile cond body meta) f = do
+    body' <- transformMetadata body f
+    meta' <- f meta
+    return $ ImpWhile cond body' meta'
+instance (TransformMetadata m (f e) t, TransformMetadata m (g e) t) => TransformMetadata m ((f :+: g) e) t where
+  transformMetadata (Inl f) func = do f' <- transformMetadata f func; return $ Inl f'
+  transformMetadata (Inr g) func = do g' <- transformMetadata g func; return $ Inr g'
+instance Monad m => TransformMetadata m (ImpProgram t) t where
+  transformMetadata (In prog) func = do prog' <- transformMetadata prog func; return $ In prog'
+
+populateLoopIds :: forall p t. TransformMetadata IO p t => p -> IO p
+populateLoopIds prog = transformMetadata @IO @p @t prog updateLoopId
+  where
+    updateLoopId :: ImpWhileMetadata t -> IO (ImpWhileMetadata t)
+    updateLoopId (ImpWhileMetadata uuid invar meas) = do
+      uuid' <- case uuid of
+        Nothing -> UUID.nextRandom >>= return . Just
+        Just _  -> return uuid
+      return $ ImpWhileMetadata uuid' invar meas
+
+repopulateLoopIds :: forall p t. TransformMetadata IO p t => p -> IO p
+repopulateLoopIds prog = transformMetadata @IO @p @t prog overwriteLoopId
+  where
+    overwriteLoopId :: ImpWhileMetadata t -> IO (ImpWhileMetadata t)
+    overwriteLoopId (ImpWhileMetadata _ invar meas) = do
+      uuid  <- UUID.nextRandom
+      return $ ImpWhileMetadata (Just uuid) invar meas
 
 
 ------------------------
@@ -542,6 +593,9 @@ data ImpPieContext t = ImpPieContext
   , pc_programLits    :: Set t
   }
 
+instance ImpPieContextProvider (ImpPieContext t) t where
+  impPieCtx = id
+
 class ImpBackwardPT ctx expr t where
   impBackwardPT :: ctx -> expr -> Assertion t -> Ceili (Assertion t)
 
@@ -662,7 +716,7 @@ class ImpForwardPT ctx expr t where
 instance ImpForwardPT c (ImpSkip t e) t where
   impForwardPT _ ImpSkip pre = return pre
 
-instance forall c t e. ImpForwardPT c (ImpAsgn t e) t where
+instance ImpForwardPT c (ImpAsgn t e) t where
   impForwardPT _ (ImpAsgn lhs rhs) pre = do
     lhs' <- envFreshen lhs
     let

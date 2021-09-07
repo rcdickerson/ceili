@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Ceili.FeatureLearning.PACBooleanTest(htf_thisModulesTests) where
 
@@ -65,9 +66,9 @@ test_clauseToAssertion =
   let
     x = Var $ TypedName (Name "x" 0) Int
     y = Var $ TypedName (Name "y" 0) Int
-    assertions = Vector.fromList [Eq x (Num 1), Lt x (Num 1), Eq x y, Lte x y]
+    assertions = Vector.fromList [Eq @Integer x (Num 1), Lt x (Num 1), Eq x y, Lte x y]
     clause = Map.fromList [(0, CPos), (3, CNeg)]
-    expected = Or [Eq x (Num 1), Not $ Lte x y]
+    expected = Or [Eq @Integer x (Num 1), Not $ Lte x y]
   in assertEqual expected $ clauseToAssertion assertions clause
 
 
@@ -173,7 +174,7 @@ test_learnBoolExpr = let
                              , Lt (Num 0) x
                              , Lt (Num 1) x
                              , Lt x (Num 5)
-                             , Lt x (Num 10) ]
+                             , Lt x (Num 10) ] :: Vector (Assertion Integer)
   -- Target: 0 < x < 5
   posFV    = Vector.fromList [ Vector.fromList [False, True,  False, True,  True] -- x = 1
                              , Vector.fromList [False, True,  True,  True,  True] -- x = 2
@@ -198,7 +199,7 @@ test_learnBoolExpr_largerClause = let
                              , Lt x (Num 10)
                              , Eq x (Num 10)
                              , Eq x (Num 7)
-                             ]
+                             ] :: Vector (Assertion Integer)
   -- Target: (x < 5  or  x >= 10  or  x = 7)  and  (x >= 0)
   posFV    = Vector.fromList [ Vector.fromList [False, False, False, True,  True,  False, False] -- x = 0
                              , Vector.fromList [False, True,  False, True,  True,  False, False] -- x = 1

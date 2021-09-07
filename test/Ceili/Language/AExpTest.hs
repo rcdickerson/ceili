@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Ceili.Language.AExpTest(htf_thisModulesTests) where
 import Test.Framework
@@ -26,6 +27,8 @@ test_freshen =
   in do
     assertEqual expectedNextIds' actualNextIds'
     assertEqual expectedAexp'    actualAexp'
+
+evalAExp = eval @() @Integer @(AExp Integer) @Integer ()
 
 test_evalAExp_Lit = do
   assertEqual 0    $ evalAExp Map.empty (ALit 0)

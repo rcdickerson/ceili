@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Ceili.Language.ImpParserTest(htf_thisModulesTests) where
 
@@ -19,42 +20,42 @@ assertCorrectParse progStr expected = case parseImp progStr of
 
 test_skip = let
   prog = "skip;"
-  expected = impSkip
+  expected = impSkip @Integer
   in assertCorrectParse prog expected
 
 test_asgn = let
   prog = "x := 5;"
-  expected = impAsgn (n "x") (ALit 5)
+  expected = impAsgn (n "x") (ALit @Integer 5)
   in assertCorrectParse prog expected
 
 test_asgnWithIndex = let
   prog = "x!5 := 5;"
-  expected = impAsgn (Name "x" 5) (ALit 5)
+  expected = impAsgn (Name "x" 5) (ALit @Integer 5)
   in assertCorrectParse prog expected
 
 test_seq = let
   prog = "x := 5; y := 10;"
-  expected = impSeq [ impAsgn x (ALit 5)
+  expected = impSeq [ impAsgn x (ALit @Integer 5)
                   , impAsgn y (ALit 10)
                   ]
   in assertCorrectParse prog expected
 
 test_if = let
   prog = "if x == 5 then y := 5; else y := 10; endif"
-  expected = impIf (BEq (v "x") (ALit 5))
+  expected = impIf (BEq (v "x") (ALit @Integer 5))
                  (impAsgn y (ALit 5))
                  (impAsgn y (ALit 10))
   in assertCorrectParse prog expected
 
 test_ifNoElse = let
   prog = "if x == 5 then y := 5; endif"
-  expected = impIf (BEq (v "x") (ALit 5))
+  expected = impIf (BEq (v "x") (ALit @Integer 5))
                  (impAsgn y (ALit 5))
                  impSkip
   in assertCorrectParse prog expected
 
 test_while = let
   prog = "while x == 5 do y := 10; end"
-  expected = impWhile (BEq (v "x") (ALit 5))
+  expected = impWhile (BEq (v "x") (ALit @Integer 5))
                  (impAsgn y (ALit 10))
   in assertCorrectParse prog expected

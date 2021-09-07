@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Ceili.InvariantInference.PieTest(htf_thisModulesTests) where
 
@@ -9,12 +10,13 @@ import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
 import Ceili.Name
+import Ceili.SMTString
 import Control.Monad.Trans.State ( evalStateT )
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 
-runAndAssertEquivalent :: Assertion -> Ceili (Maybe Assertion) -> IO ()
+runAndAssertEquivalent :: SMTString t => Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
 runAndAssertEquivalent expected actual = do
   result <- runCeili emptyEnv actual
   case result of
@@ -27,7 +29,7 @@ runAndAssertEquivalent expected actual = do
 
 test_createFV = let
   x = Var $ TypedName (Name "x" 0) Int
-  assertions = Vector.fromList [Eq x (Num 0), Lt x (Num 3), Lte x (Num 3)]
+  assertions = Vector.fromList [Eq @Integer x (Num 0), Lt x (Num 3), Lte x (Num 3)]
   states = Vector.fromList [ Map.fromList [(Name "x" 0, 0)]
                            , Map.fromList [(Name "x" 0, 2)]
                            , Map.fromList [(Name "x" 0, 3)]
@@ -183,7 +185,7 @@ test_pie = let
                               , Map.fromList [(Name "x" 0, 5)] ]
   badTests  = Vector.fromList [ Map.fromList [(Name "x" 0, -1)]
                               , Map.fromList [(Name "x" 0, -5)] ]
-  expected  = Lt (Num 0) (Var x)
+  expected  = Lt @Integer (Num 0) (Var x)
   task = pie Vector.empty goodTests badTests
   in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits
 

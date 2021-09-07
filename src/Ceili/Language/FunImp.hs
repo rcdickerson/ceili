@@ -1,19 +1,23 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Ceili.Language.FunImp
   ( AExp(..)
   , BExp(..)
   , CallId
-  , EvalImp(..)
+  , CollectLoopHeadStates(..)
+  , DefaultFunImpEvalContext(..)
   , Fuel(..)
   , FuelTank(..)
-  , FunEvalContext(..)
   , FunImpl(..)
   , FunImplEnv
   , FunImplLookup(..)
@@ -24,13 +28,15 @@ module Ceili.Language.FunImp
   , ImpExpr(..)
   , ImpForwardPT(..)
   , ImpIf(..)
+  , ImpPieContext(..) -- TODO: This should live in the PIE module?
+  , ImpPieContextProvider(..)
   , ImpSkip(..)
   , ImpSeq(..)
   , ImpWhile(..)
   , ImpWhileMetadata(..)
-  , PopulateTestStates(..)
+  , LoopHeadStates
   , Name(..)
-  , State
+  , eval
   , impAsgn
   , impCall
   , impIf
@@ -39,18 +45,23 @@ module Ceili.Language.FunImp
   , impWhile
   , impWhileWithMeta
   , inject
+  , populateLoopIds
   , prettyArgs
   , prettyAssignees
+  , repopulateLoopIds
   ) where
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
+import Ceili.Evaluation
 import Ceili.Language.AExp
 import Ceili.Language.BExp
 import Ceili.Language.Compose
 import Ceili.Language.Imp
-import Ceili.Name
 import Ceili.Literal
+import Ceili.Name
+import Ceili.SMTString
+import Ceili.StatePredicate
 import Control.Monad ( foldM )
 import Data.Map ( Map )
 import qualified Data.Map as Map
@@ -90,9 +101,13 @@ instance FreshableNames e => FreshableNames (FunImpl e) where
     returns' <- freshen returns
     return $ FunImpl params' body' returns'
 
-instance CollectableLiterals e => CollectableLiterals (FunImpl e) where
+instance CollectableLiterals e t => CollectableLiterals (FunImpl e) t where
   litsIn (FunImpl _ body _) = litsIn body
 
+instance TransformMetadata m e t => TransformMetadata m (FunImpl e) t where
+  transformMetadata (FunImpl params body rets) f = do
+    body' <- transformMetadata body f
+    return $ FunImpl params body' rets
 
 ------------------------------------------
 -- Function Implementation Environments --
@@ -118,58 +133,64 @@ instance CollectableNames e => CollectableNames (FunImplEnv e) where
 
 type CallId = String
 
-data ImpCall e = ImpCall CallId [AExp] [Name]
-                deriving (Eq, Ord, Show, Functor)
+data ImpCall t e = ImpCall CallId [AExp t] [Name]
+  deriving (Eq, Ord, Show, Functor)
 
-instance CollectableNames (ImpCall e) where
+instance CollectableNames (ImpCall t e) where
   namesIn (ImpCall _ args assignees) =
     Set.union (namesIn args) (namesIn assignees)
 
-instance CollectableTypedNames (ImpCall e) where
+instance Integral t => CollectableTypedNames (ImpCall t e) where
   typedNamesIn (ImpCall _ args assignees) =
     Set.union (typedNamesIn args) (Set.map (\n -> TypedName n Int) $ namesIn assignees)
 
-instance FreshableNames (ImpCall e) where
+instance FreshableNames (ImpCall t e) where
   freshen (ImpCall cid args assignees) = do
     args'      <- freshen args
     assignees' <- freshen assignees
     return $ ImpCall cid args' assignees'
 
-instance MappableNames (ImpCall e) where
+instance MappableNames (ImpCall t e) where
   mapNames f (ImpCall cid args assignees) =
     ImpCall cid (map (mapNames f) args) (map f assignees)
 
-instance CollectableLiterals (ImpCall e) where
+instance Ord t => CollectableLiterals (ImpCall t e) t where
   litsIn (ImpCall _ args _) = litsIn args
+
+instance Monad m => TransformMetadata m (ImpCall t e) t where
+  transformMetadata call _ = return call
 
 
 ---------------------
 -- FunImp Language --
 ---------------------
 
-type FunImpProgram = ImpExpr ( ImpCall
-                           :+: ImpSkip
-                           :+: ImpAsgn
-                           :+: ImpSeq
-                           :+: ImpIf
-                           :+: ImpWhile )
+type FunImpProgram t = ImpExpr t ( ImpCall t
+                               :+: ImpSkip t
+                               :+: ImpAsgn t
+                               :+: ImpSeq t
+                               :+: ImpIf t
+                               :+: ImpWhile t)
 
-instance CollectableNames FunImpProgram where
+instance CollectableNames (FunImpProgram t) where
   namesIn (In f) = namesIn f
 
-instance CollectableTypedNames FunImpProgram where
+instance Integral t => CollectableTypedNames (FunImpProgram t) where
   typedNamesIn (In f) = typedNamesIn f
 
-instance MappableNames FunImpProgram where
+instance MappableNames (FunImpProgram t) where
   mapNames func (In f) = In $ mapNames func f
 
-instance FreshableNames FunImpProgram where
+instance FreshableNames (FunImpProgram t) where
   freshen (In f) = return . In =<< freshen f
 
-instance CollectableLiterals FunImpProgram where
+instance Ord t => CollectableLiterals (FunImpProgram t) t where
   litsIn (In f) = litsIn f
 
-impCall :: (ImpCall :<: f) => CallId -> [AExp] -> [Name] -> ImpExpr f
+instance Monad m => TransformMetadata m (FunImpProgram t) t where
+  transformMetadata (In prog) f = do prog' <- transformMetadata prog f; return $ In prog'
+
+impCall :: (ImpCall t :<: f) => CallId -> [AExp t] -> [Name] -> ImpExpr t f
 impCall cid args assignees = inject $ ImpCall cid args assignees
 
 
@@ -177,48 +198,66 @@ impCall cid args assignees = inject $ ImpCall cid args assignees
 -- Interpreter --
 -----------------
 
-data FunEvalContext e = FunEvalContext { fiec_fuel  :: Fuel
-                                       , fiec_impls :: FunImplEnv e
-                                       }
+data DefaultFunImpEvalContext e = DefaultFunImpEvalContext { dfiec_impls :: FunImplEnv e
+                                                           , dfiec_fuel  :: Fuel
+                                                           }
+instance FunImplLookup (DefaultFunImpEvalContext e) e where
+  lookupFunImpl = lookupFunImpl . dfiec_impls
+instance FuelTank (DefaultFunImpEvalContext e) where
+  getFuel = getFuel . dfiec_fuel
+  setFuel (DefaultFunImpEvalContext impls _) fuel = DefaultFunImpEvalContext impls fuel
 
-instance FuelTank (FunEvalContext e) where
-  getFuel = fiec_fuel
-  setFuel (FunEvalContext _ impls) fuel = FunEvalContext fuel impls
 
-instance FunImplLookup (FunEvalContext e) e where
-  lookupFunImpl (FunEvalContext _ impls) name = case Map.lookup name impls of
-    Nothing   -> throwError $ "No implementation for " ++ name
-    Just impl -> return impl
+getOrFail :: ProgState a -> Name -> Ceili a
+getOrFail state name = case Map.lookup name state of
+  Nothing  -> throwError $ "No program state mapping for " ++ show name
+  Just val -> return val
 
-instance (FunImplLookup c e, EvalImp c e) => EvalImp c (ImpCall e) where
-  evalImp ctx st (ImpCall cid args assignees) = do
-    (FunImpl params body returns) <- (lookupFunImpl ctx cid :: Ceili (FunImpl e))
-    let eargs = map (evalAExp st) args
-    let inputSt = Map.fromList $ zip params eargs
-    result <- evalImp ctx inputSt body
-    return $ case result of
-      Nothing -> Nothing
-      Just outputSt ->
-        let
-          retVals = map (\r -> Map.findWithDefault 0 r outputSt) returns
-          assignments = Map.fromList $ zip assignees retVals
-        in Just $ Map.union assignments st
+instance ( FunImplLookup c e
+         , Evaluable c t (AExp t) t
+         , Evaluable c t e (ImpStep t)
+         ) => Evaluable c t (ImpCall t e) (ImpStep t) where
+  eval ctx st (ImpCall cid args assignees) = do
+    impl <- lookupFunImpl ctx cid :: Ceili (FunImpl e)
+    let evalArg = eval @c @t @(AExp t) @t ctx st
+    let eargs = map evalArg args
+    let inputSt = Map.fromList $ zip (fimpl_params impl) eargs
+    result <- eval ctx inputSt (fimpl_body impl)
+    case result of
+      Nothing -> return Nothing
+      Just outputSt -> do
+        retVals <- sequence $ map (getOrFail outputSt) (fimpl_returns impl)
+        let assignments = Map.fromList $ zip assignees retVals
+        return . Just $ Map.union assignments st
 
 -- TODO: Evaluating a function call should cost fuel to prevent infinite recursion.
 
-instance EvalImp (FunEvalContext FunImpProgram) FunImpProgram where
-  evalImp ctx st (In f) = evalImp ctx st f
+instance ( FuelTank c
+         , FunImplLookup c (FunImpProgram t)
+         , Evaluable c t (AExp t) t
+         , Evaluable c t (BExp t) Bool
+         )
+        => Evaluable c t (FunImpProgram t) (ImpStep t) where
+  eval ctx st (In program) = eval ctx st program
 
 
------------------
--- Test States --
------------------
+----------------------
+-- Loop Head States --
+----------------------
 
-instance EvalImp (FunEvalContext e) e => PopulateTestStates (FunEvalContext e) (ImpCall e) where
-  populateTestStates _ _ = return . id
+instance ( FunImplLookup c e
+         , Evaluable c t (AExp t) t
+         , Evaluable c t e (ImpStep t)
+         ) => CollectLoopHeadStates c (ImpCall t e) t where
+  collectLoopHeadStates _ _ _ = return Map.empty
 
-instance PopulateTestStates (FunEvalContext FunImpProgram) FunImpProgram where
-  populateTestStates ctx sts (In f) = populateTestStates ctx sts f >>= return . In
+instance ( Ord t
+         , FuelTank c
+         , FunImplLookup c (FunImpProgram t)
+         , Evaluable c t (AExp t) t
+         , Evaluable c t (BExp t) Bool
+         ) => CollectLoopHeadStates c (FunImpProgram t) t where
+  collectLoopHeadStates ctx sts (In f) = collectLoopHeadStates ctx sts f
 
 
 -- TODO: PTSes don't handle recursion. Add detection to fail gracefully instead of
@@ -229,7 +268,7 @@ instance PopulateTestStates (FunEvalContext FunImpProgram) FunImpProgram where
 -- Pretty Printer --
 --------------------
 
-instance Pretty (ImpCall e) where
+instance Pretty t => Pretty (ImpCall t e) where
   pretty (ImpCall callId args assignees) =
     prettyAssignees assignees <+> pretty ":=" <+> pretty callId <> prettyArgs args
 
@@ -248,7 +287,7 @@ prettyArgs args =
     _      -> encloseSep lparen rparen comma (map pretty args)
 
 
-instance Pretty FunImpProgram where
+instance Pretty t => Pretty (FunImpProgram t) where
   pretty (In p) = pretty p
 
 
@@ -256,10 +295,20 @@ instance Pretty FunImpProgram where
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance ImpBackwardPT (FunImplEnv FunImpProgram) FunImpProgram where
+instance ( Num t
+         , Ord t
+         , SMTString t
+         , AssertionParseable t
+         , FunImplLookup c (FunImpProgram t)
+         , StatePredicate (Assertion t) t
+         , ImpPieContextProvider c t
+         ) => ImpBackwardPT c (FunImpProgram t) t where
   impBackwardPT ctx (In f) post = impBackwardPT ctx f post
 
-instance (FunImplLookup c e, ImpBackwardPT c e, FreshableNames e) => ImpBackwardPT c (ImpCall e) where
+instance ( FunImplLookup c e
+         , ImpBackwardPT c e t
+         , FreshableNames e
+         ) => ImpBackwardPT c (ImpCall t e) t where
   impBackwardPT ctx (ImpCall cid args assignees) post = do
     (impl :: FunImpl e) <- lookupFunImpl ctx cid
     FunImpl params body returns <- envFreshen impl
@@ -267,7 +316,7 @@ instance (FunImplLookup c e, ImpBackwardPT c e, FreshableNames e) => ImpBackward
     wp    <- impBackwardPT ctx body post'
     assignBackward ctx params args wp
 
-assignBackward :: c -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+assignBackward :: c -> [Name] -> [AExp t] -> Assertion t -> Ceili (Assertion t)
 assignBackward ctx params args post =
   if length params /= length args
     then throwError "Different number of params and args"
@@ -280,10 +329,17 @@ assignBackward ctx params args post =
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance ImpForwardPT (FunImplEnv FunImpProgram) FunImpProgram where
+instance ( Num t
+         , Ord t
+         , SMTString t
+         , AssertionParseable t
+         , FunImplLookup c (FunImpProgram t)
+         , CollectableNames (FunImpProgram t)
+         , StatePredicate (Assertion t) t
+         ) => ImpForwardPT c (FunImpProgram t) t where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre
 
-instance (FunImplLookup c e, ImpForwardPT c e, FreshableNames e) => ImpForwardPT c (ImpCall e) where
+instance (FunImplLookup c e, ImpForwardPT c e t, FreshableNames e) => ImpForwardPT c (ImpCall t e) t where
   impForwardPT ctx (ImpCall cid args assignees) pre = do
     (impl :: FunImpl e) <- lookupFunImpl ctx cid
     FunImpl params body returns <- envFreshen impl
@@ -291,7 +347,7 @@ instance (FunImplLookup c e, ImpForwardPT c e, FreshableNames e) => ImpForwardPT
     sp   <- impForwardPT ctx body pre'
     assignForward ctx assignees (map AVar returns) sp
 
-assignForward :: c -> [Name] -> [AExp] -> Assertion -> Ceili Assertion
+assignForward :: c -> [Name] -> [AExp t] -> Assertion t -> Ceili (Assertion t)
 assignForward impls params args pre =
   if length params /= length args
     then throwError "Different number of params and args"
