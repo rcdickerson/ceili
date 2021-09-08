@@ -21,7 +21,6 @@ import Ceili.CeiliEnv
 import qualified Ceili.FeatureLearning.LinearInequalities as LI
 import qualified Ceili.FeatureLearning.PACBoolean as BL
 import qualified Ceili.FeatureLearning.Separator as SL
-import Ceili.Name
 import Ceili.PTS ( BackwardPT )
 import Ceili.ProgState
 import qualified Ceili.SMT as SMT
@@ -52,7 +51,7 @@ createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
 -- Computation --
 -----------------
 
-data PieEnv t = PieEnv { pe_names :: Set TypedName
+data PieEnv t = PieEnv { pe_names :: Set Name
                        , pe_lits  :: Set t
                        }
 
@@ -75,9 +74,10 @@ plog_d msg = lift $ log_d msg
 loopInvGen :: ( Num t
               , Ord t
               , SMTString t
+              , SMTTypeString t
               , StatePredicate (Assertion t) t
               , AssertionParseable t )
-           => Set TypedName
+           => Set Name
            -> Set t
            -> BackwardPT c p t
            -> c
@@ -92,6 +92,7 @@ loopInvGen names literals backwardPT ctx cond body post goodTests = do
   evalStateT task $ PieEnv names literals
 
 loopInvGen' :: ( SMTString t
+               , SMTTypeString t
                , Num t
                , Ord t
                , StatePredicate (Assertion t) t
@@ -133,6 +134,7 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
 makeInductive :: ( Num t
                  , Ord t
                  , SMTString t
+                 , SMTTypeString t
                  , StatePredicate (Assertion t) t
                  , AssertionParseable t )
               => BackwardPT c p t
@@ -218,6 +220,7 @@ paretoOptimize sufficient assertions =
 vPreGen :: ( Num t
            , Ord t
            , SMTString t
+           , SMTTypeString t
            , StatePredicate (Assertion t) t
            , AssertionParseable t )
         => (Assertion t)
@@ -244,14 +247,14 @@ vPreGen goal goodTests badTests = do
           vPreGen goal goodTests $ Vector.cons (extractState counter) badTests
 
 -- TODO: This is fragile.
-extractState :: SMTString t => (Assertion t) -> (ProgState t)
+extractState :: (SMTString t, SMTTypeString t) => (Assertion t) -> (ProgState t)
 extractState assertion = case assertion of
   Eq lhs rhs -> Map.fromList [(extractName lhs, extractInt rhs)]
   And as     -> Map.unions $ map extractState as
   _          -> error $ "Unexpected assertion: " ++ show assertion
   where
     extractName arith = case arith of
-      Var (TypedName name _) -> name
+      Var name -> name
       _ -> error $ "Unexpected arith (expected name): " ++ show arith
     extractInt arith = case arith of
       Num n -> n
@@ -265,6 +268,7 @@ extractState assertion = case assertion of
 pie :: ( Num t
        , Ord t
        , SMTString t
+       , SMTTypeString t
        , StatePredicate (Assertion t) t )
     => Vector (Assertion t)
     -> Vector (ProgState t)
@@ -298,6 +302,7 @@ findConflict posFVs negFVs = Vector.find (\pos -> isJust $ Vector.find (== pos) 
 findAugmentingFeature :: ( Num t
                          , Ord t
                          , SMTString t
+                         , SMTTypeString t
                          , SMTString s
                          , StatePredicate (Assertion t) s )
                       => Vector (ProgState s)

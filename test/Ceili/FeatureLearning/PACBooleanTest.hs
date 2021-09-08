@@ -64,8 +64,8 @@ test_clausesWithSize_2_3 =
 
 test_clauseToAssertion =
   let
-    x = Var $ TypedName (Name "x" 0) Int
-    y = Var $ TypedName (Name "y" 0) Int
+    x = Var $ Name "x" 0
+    y = Var $ Name "y" 0
     assertions = Vector.fromList [Eq @Integer x (Num 1), Lt x (Num 1), Eq x y, Lte x y]
     clause = Map.fromList [(0, CPos), (3, CNeg)]
     expected = Or [Eq @Integer x (Num 1), Not $ Lte x y]
@@ -169,7 +169,7 @@ test_greedySetCover_noCover = let
 ---------------------------------
 
 test_learnBoolExpr = let
-  x        = Var $ TypedName (Name "x" 0) Int
+  x        = Var $ Name "x" 0
   features = Vector.fromList [ Lt x (Num 0)
                              , Lt (Num 0) x
                              , Lt (Num 1) x
@@ -191,7 +191,7 @@ test_learnBoolExpr = let
       Right actual -> assertEqual expected actual
 
 test_learnBoolExpr_largerClause = let
-  x        = Var $ TypedName (Name "x" 0) Int
+  x        = Var $ Name "x" 0
   features = Vector.fromList [ Lt x (Num 0)
                              , Lt (Num 0) x
                              , Lt (Num 1) x

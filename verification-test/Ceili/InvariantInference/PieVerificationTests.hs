@@ -28,7 +28,7 @@ env prog post = defaultEnv names
   where
     names = Set.union (namesIn prog) (namesIn post)
 
-assertEquivalent :: SMTString t => Assertion t -> Assertion t -> IO ()
+assertEquivalent :: (SMTString t, SMTTypeString t) => Assertion t -> Assertion t -> IO ()
 assertEquivalent a1 a2 = do
   let iff = And [ Imp a1 a2, Imp a2 a1 ]
   result <- withFastLogger LogNone $ \logger ->
@@ -38,7 +38,8 @@ assertEquivalent a1 a2 = do
     SMT.Invalid s    -> assertFailure s
     SMT.ValidUnknown -> assertFailure "Unable to establish equivalence."
 
-runAndAssertEquivalent :: SMTString t => Env -> Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
+runAndAssertEquivalent :: (SMTString t, SMTTypeString t)
+                       => Env -> Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
 runAndAssertEquivalent env expected actual = do
   result <- runCeili env actual
   case result of
@@ -55,20 +56,18 @@ test_loopInvGen = let
   y = Name "y" 0
   n = Name "n" 0
   m = Name "m" 0
-  tn n = TypedName n Int
-  var n = Var $ tn n
   cond = BNe (AVar x) (ALit @Integer 0)
   body = impSeq [ impAsgn y $ ASub (AVar y) (ALit @Integer 1)
                 , impAsgn x $ ASub (AVar x) (ALit @Integer 1)]
-  post = (Eq (var y) (Sub [var n, var m]))
-  names = Set.union (typedNamesIn body) (typedNamesIn post)
+  post = (Eq (Var y) (Sub [Var n, Var m]))
+  names = Set.union (namesIn body) (namesIn post)
   lits = litsIn body
   -- Loop will always start in a state where x = m and y = n.
   tests = [ Map.fromList [(x, 0), (y, 0), (m, 0), (n, 0)]
           , Map.fromList [(x, 5), (y, 3), (m, 5), (n, 3)]
           , Map.fromList [(x, 3), (y, 5), (m, 3), (n, 5)]
           ]
-  expected = Eq (Sub [var y, var x])
-                (Sub [var n, var m])
+  expected = Eq (Sub [Var y, Var x])
+                (Sub [Var n, Var m])
   in runAndAssertEquivalent (env body post) expected
      $ loopInvGen names lits impBackwardPT EmptyPieContextProvider (bexpToAssertion cond) body post tests

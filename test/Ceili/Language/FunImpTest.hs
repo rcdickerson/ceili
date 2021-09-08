@@ -37,7 +37,7 @@ add2Impl = FunImpl { fimpl_params = [x]
                    }
 
 data ImplEnv = ImplEnv { ie_impls :: FunImplEnv (FunImpProgram Integer)
-                       , ie_names :: Set TypedName
+                       , ie_names :: Set Name
                        , ie_lits  :: Set Integer
                        }
 
@@ -66,25 +66,25 @@ prog2 = impSeq [ impCall "add2" [AVar x] [x]
 
 
 test_backwardPT = do
-  result <- runCeili (envFunImp prog1) $ impBackwardPT implEnv prog1 $ Eq (Var $ TypedName x Int) (Num @Integer 2)
+  result <- runCeili (envFunImp prog1) $ impBackwardPT implEnv prog1 $ Eq (Var x) (Num @Integer 2)
   case result of
     Left err     -> assertFailure $ show err
-    Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 0)
+    Right actual -> assertImplies actual $ Eq (Var x) (Num 0)
 
 test_backwardPTNested = do
-  result <- runCeili (envFunImp prog2) $ impBackwardPT implEnv prog2 $ Eq (Var $ TypedName x Int) (Num @Integer 3)
+  result <- runCeili (envFunImp prog2) $ impBackwardPT implEnv prog2 $ Eq (Var x) (Num @Integer 3)
   case result of
     Left err     -> assertFailure $ show err
-    Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 0)
+    Right actual -> assertImplies actual $ Eq (Var x) (Num 0)
 
 test_forwardPT = do
-  result <- runCeili (envFunImp prog1) $ impForwardPT implEnv prog1 $ Eq (Var $ TypedName x Int) (Num @Integer 0)
+  result <- runCeili (envFunImp prog1) $ impForwardPT implEnv prog1 $ Eq (Var x) (Num @Integer 0)
   case result of
     Left err     -> assertFailure $ show err
-    Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 2)
+    Right actual -> assertImplies actual $ Eq (Var x) (Num 2)
 
 test_forwardPTNested = do
-  result <- runCeili (envFunImp prog2) $ impForwardPT implEnv prog2 $ Eq (Var $ TypedName x Int) (Num @Integer 0)
+  result <- runCeili (envFunImp prog2) $ impForwardPT implEnv prog2 $ Eq (Var x) (Num @Integer 0)
   case result of
     Left err     -> assertFailure $ show err
-    Right actual -> assertImplies actual $ Eq (Var $ TypedName x Int) (Num 3)
+    Right actual -> assertImplies actual $ Eq (Var x) (Num 3)

@@ -11,7 +11,7 @@ module Ceili.Assertion.AssertionParser
 import           Data.Char ( toLower )
 import           Ceili.Assertion.AssertionLanguage ( Arith, Assertion )
 import qualified Ceili.Assertion.AssertionLanguage as A
-import           Ceili.Name ( Name(..), Type(..), TypedName(..) )
+import           Ceili.Name ( Name(..) )
 import qualified Ceili.Name as Name
 import           Text.Parsec
 import           Text.Parsec.Language
@@ -58,28 +58,24 @@ whitespace = Token.whiteSpace lexer
 
 
 class AssertionParseable t where
-  getAssertionParser :: LiteralParser t
-
+  parseLiteral :: LiteralParser t
 instance AssertionParseable Integer where
-  getAssertionParser = integer
-
+  parseLiteral = integer
 instance AssertionParseable Double where
-  getAssertionParser = float
+  parseLiteral = float
 
 data ParseContext t = ParseContext { pc_literalParser :: LiteralParser t }
 
 type LiteralParser t   = Parsec String (ParseContext t) t
 type AssertionParser t = Parsec String (ParseContext t) (Assertion t)
 type ArithParser t     = Parsec String (ParseContext t) (Arith t)
-type TNameParser t     = Parsec String (ParseContext t) TypedName
 type NameParser t      = Parsec String (ParseContext t) Name
-type TypeParser t      = Parsec String (ParseContext t) Type
 
 parseAssertion :: AssertionParseable t => String -> Either ParseError (Assertion t)
-parseAssertion assertStr = runParser assertionParser (ParseContext getAssertionParser) "" assertStr
+parseAssertion assertStr = runParser assertionParser (ParseContext parseLiteral) "" assertStr
 
 parseArith :: AssertionParseable t => String -> Either ParseError (Arith t)
-parseArith arithStr = runParser arithParser (ParseContext getAssertionParser) "" arithStr
+parseArith arithStr = runParser arithParser (ParseContext parseLiteral) "" arithStr
 
 assertionParser :: AssertionParser t
 assertionParser = whitespace >> (try model <|> boolExpr)
@@ -114,7 +110,7 @@ boolLit = do
 boolVar :: AssertionParser t
 boolVar = do
   n <- name
-  return $ A.Atom $ TypedName n Bool
+  return $ A.Atom n
 
 arithLit :: ArithParser t
 arithLit = lit <|> parens lit
@@ -123,7 +119,7 @@ arithVar :: ArithParser t
 arithVar = do
   n <- name
   whitespace
-  return . A.Var $ TypedName n Int
+  return $ A.Var n
 
 forall :: AssertionParser t
 forall = do
@@ -143,19 +139,14 @@ exists = do
   char ')' >> whitespace
   return $ A.Exists vars body
 
-quantVar :: TNameParser t
+quantVar :: NameParser t
 quantVar = do
   char '(' >> whitespace
   n <- name
   whitespace
-  ty <- typeFromString =<< identifier
+  typ <- identifier
   char ')' >> whitespace
-  return $ TypedName n ty
-
-typeFromString :: String -> TypeParser t
-typeFromString str = case map toLower str of
-  "int" -> return Int
-  _     -> fail $ "Unknown sort: " ++ str
+  return n
 
 boolApp :: AssertionParser t
 boolApp = do
@@ -254,14 +245,14 @@ model = parens $ do
   defs <- many defineFun
   return $ case defs of
     [] -> A.ATrue
-    (tn, arith):[] -> A.Eq (A.Var tn) arith
+    (v, arith):[] -> A.Eq (A.Var v) arith
     _ -> A.And $ map (\(tn, arith) -> A.Eq (A.Var tn) arith) defs
 
-defineFun :: Parsec String (ParseContext t) (TypedName, Arith t)
+defineFun :: Parsec String (ParseContext t) (Name, Arith t)
 defineFun = parens $ do
   reserved "define-fun"
   funName <- name
   _ <- parens $ many name -- pararms currently unsupported
-  typ <- typeFromString =<< identifier
+  typ <- identifier
   value <- arithExpr
-  return (TypedName funName typ, value)
+  return (funName, value)

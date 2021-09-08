@@ -15,7 +15,8 @@ import Ceili.SMTString
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-runAndAssertEquivalent :: SMTString t => Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
+runAndAssertEquivalent :: (SMTString t, SMTTypeString t)
+                       => Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
 runAndAssertEquivalent expected actual = do
   result <- runCeili emptyEnv actual
   case result of
@@ -27,7 +28,7 @@ runAndAssertEquivalent expected actual = do
 
 
 test_featureLearn = let
-  x         = TypedName (Name "x" 0) Int
+  x         = Name "x" 0
   names     = Set.singleton x
   lits      = Set.fromList [1, 5, -1, -5] :: Set.Set Integer
   goodTests = [ Map.fromList [(Name "x" 0, 1)]

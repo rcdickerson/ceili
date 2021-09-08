@@ -11,11 +11,11 @@ import qualified Data.Map as Map
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
-tni :: String -> TypedName
-tni s = TypedName (Name s 0) Int
+n :: String -> Name
+n s = Name s 0
 
 var :: String -> Arith Integer
-var = Var . tni
+var = Var . n
 
 assertHasSameItems :: (Ord a, Show a) => Set a -> Set a -> IO ()
 assertHasSameItems expected actual = let
@@ -25,7 +25,7 @@ assertHasSameItems expected actual = let
   in assertEqual (countItems expected) (countItems actual)
 
 test_twoVarsNoLits = let
-  names = Set.fromList [ tni "x", tni "y" ]
+  names = Set.fromList [ n "x", n "y" ]
   expected = Set.fromList [ -- x
                             Lte (var "x") (Num $ -1)
                           , Lte (var "x") (Num 0)

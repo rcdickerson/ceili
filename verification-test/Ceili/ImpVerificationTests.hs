@@ -78,7 +78,7 @@ runBackward expectedResult progFile pre post = do
   prog <- readAndParse progFile
   let findWP = do
         loopHeadStates <- collectLoopHeadStates (Fuel 1000) (mkTestStartStates prog) prog
-        let ctx = ImpPieContext loopHeadStates (typedNamesIn prog) (litsIn prog)
+        let ctx = ImpPieContext loopHeadStates (namesIn prog) (litsIn prog)
         impBackwardPT ctx prog post
   assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do
@@ -86,8 +86,8 @@ runBackward expectedResult progFile pre post = do
       assertSMTResult expectedResult smtResult
 
 
-varX = Var $ TypedName (Name "x" 0) Int
-varY = Var $ TypedName (Name "y" 0) Int
+varX = Var $ Name "x" 0
+varY = Var $ Name "y" 0
 
 
 test_forward_inferInv1_valid    = runForward  ExpectSuccess "inferInv1.imp" ATrue $ Eq varX varY

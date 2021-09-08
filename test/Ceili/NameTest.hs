@@ -130,21 +130,3 @@ test_mappableNames_name =
 
 test_collectableNames_name =
   assertEqual (Set.singleton x0) $ namesIn x0
-
-
--- Typed names
-
-x0Int = TypedName x0 Int
-x1Int = TypedName x1 Int
-x0Bool = TypedName x0 Bool
-
-test_mappableNames_typedName =
-  assertEqual x1Int $ mapNames (\_ -> x1) x0Int
-
-test_collectableNames_typedName =
-  assertEqual (Set.singleton x0) $ namesIn x0Int
-
-test_showSMT_typedName = do
-  assertEqual "(x Int)" $ showSMT x0Int
-  assertEqual "(x!1 Int)" $ showSMT x1Int
-  assertEqual "(x Bool)" $ showSMT x0Bool

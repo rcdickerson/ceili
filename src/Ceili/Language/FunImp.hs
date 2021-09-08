@@ -32,6 +32,7 @@ module Ceili.Language.FunImp
   , ImpPieContextProvider(..)
   , ImpSkip(..)
   , ImpSeq(..)
+  , ImpStep
   , ImpWhile(..)
   , ImpWhileMetadata(..)
   , LoopHeadStates
@@ -84,12 +85,6 @@ instance CollectableNames e => CollectableNames (FunImpl e) where
                , namesIn body
                , Set.fromList returns ]
 
-instance CollectableTypedNames e => CollectableTypedNames (FunImpl e) where
-  typedNamesIn (FunImpl params body returns) =
-    Set.unions [ Set.fromList $ map (\n -> TypedName n Int) params
-               , typedNamesIn body
-               , Set.fromList $ map (\n -> TypedName n Int) returns ]
-
 instance MappableNames e => MappableNames (FunImpl e) where
   mapNames f (FunImpl params body returns) =
     FunImpl (map f params) (mapNames f body) (map f returns)
@@ -140,10 +135,6 @@ instance CollectableNames (ImpCall t e) where
   namesIn (ImpCall _ args assignees) =
     Set.union (namesIn args) (namesIn assignees)
 
-instance Integral t => CollectableTypedNames (ImpCall t e) where
-  typedNamesIn (ImpCall _ args assignees) =
-    Set.union (typedNamesIn args) (Set.map (\n -> TypedName n Int) $ namesIn assignees)
-
 instance FreshableNames (ImpCall t e) where
   freshen (ImpCall cid args assignees) = do
     args'      <- freshen args
@@ -174,9 +165,6 @@ type FunImpProgram t = ImpExpr t ( ImpCall t
 
 instance CollectableNames (FunImpProgram t) where
   namesIn (In f) = namesIn f
-
-instance Integral t => CollectableTypedNames (FunImpProgram t) where
-  typedNamesIn (In f) = typedNamesIn f
 
 instance MappableNames (FunImpProgram t) where
   mapNames func (In f) = In $ mapNames func f
@@ -298,6 +286,7 @@ instance Pretty t => Pretty (FunImpProgram t) where
 instance ( Num t
          , Ord t
          , SMTString t
+         , SMTTypeString t
          , AssertionParseable t
          , FunImplLookup c (FunImpProgram t)
          , StatePredicate (Assertion t) t
@@ -332,6 +321,7 @@ assignBackward ctx params args post =
 instance ( Num t
          , Ord t
          , SMTString t
+         , SMTTypeString t
          , AssertionParseable t
          , FunImplLookup c (FunImpProgram t)
          , CollectableNames (FunImpProgram t)

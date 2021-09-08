@@ -2,9 +2,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Ceili.Language.AExp
   ( AExp(..)
+  , AExpOperations(..)
   , aexpToArith
   , eval
   ) where
@@ -40,9 +43,6 @@ instance CollectableNames (AExp t) where
     ADiv lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     AMod lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     APow lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
-
-instance Integral t => CollectableTypedNames (AExp t) where
-  typedNamesIn aexp = Set.map (\n -> TypedName n Int) $ namesIn aexp
 
 instance MappableNames (AExp t) where
   mapNames f aexp = case aexp of
@@ -80,7 +80,7 @@ instance Ord t => CollectableLiterals (AExp t) t where
 aexpToArith :: AExp t -> A.Arith t
 aexpToArith aexp = case aexp of
   ALit i           -> A.Num i
-  AVar var         -> A.Var (TypedName var Int)
+  AVar var         -> A.Var var
   AAdd aexp1 aexp2 -> A.Add [aexpToArith aexp1, aexpToArith aexp2]
   ASub aexp1 aexp2 -> A.Sub [aexpToArith aexp1, aexpToArith aexp2]
   AMul aexp1 aexp2 -> A.Mul [aexpToArith aexp1, aexpToArith aexp2]
@@ -102,16 +102,25 @@ aexpToArith aexp = case aexp of
 -- Evaluation --
 ----------------
 
-instance Integral t => Evaluable c t (AExp t) Integer where
+class Num t => AExpOperations t where
+  aExponent :: t -> t -> t
+  aDivide   :: t -> t -> t
+  aModulus  :: t -> t -> t
+instance (Num t, Integral t) => AExpOperations t where
+  aExponent = (^)
+  aDivide   = quot
+  aModulus  = mod
+
+instance AExpOperations t => Evaluable c t (AExp t) t where
   eval ctx st aexp = case aexp of
-    ALit i       -> fromIntegral i
-    AVar v       -> fromIntegral $ Map.findWithDefault 0 v st
+    ALit i       -> i
+    AVar v       -> Map.findWithDefault 0 v st
     AAdd lhs rhs -> (eval ctx st lhs) + (eval ctx st rhs)
     ASub lhs rhs -> (eval ctx st lhs) - (eval ctx st rhs)
     AMul lhs rhs -> (eval ctx st lhs) * (eval ctx st rhs)
-    ADiv lhs rhs -> (eval ctx st lhs) `quot` (eval ctx st rhs)
-    AMod lhs rhs -> (eval ctx st lhs) `mod` (eval ctx st rhs)
-    APow lhs rhs -> (eval ctx st lhs) ^ (eval ctx st rhs)
+    ADiv lhs rhs -> aDivide   (eval ctx st lhs) (eval ctx st rhs)
+    AMod lhs rhs -> aModulus  (eval ctx st lhs) (eval ctx st rhs)
+    APow lhs rhs -> aExponent (eval ctx st lhs) (eval ctx st rhs)
 
 
 --------------------

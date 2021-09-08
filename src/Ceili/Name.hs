@@ -5,7 +5,6 @@
 
 module Ceili.Name
   ( CollectableNames(..)
-  , CollectableTypedNames(..)
   , FreshableNames(..)
   , Freshener
   , Handle
@@ -13,8 +12,6 @@ module Ceili.Name
   , MappableNames(..)
   , Name(..)
   , NextFreshIds
-  , Type(..)
-  , TypedName(..)
   , buildFreshIds
   , buildFreshMap
   , freshenBinop
@@ -25,7 +22,6 @@ module Ceili.Name
   , substituteAll
   , substituteHandle
   , substituteAllHandles
-  , withType
   ) where
 
 import Ceili.Language.Compose
@@ -241,55 +237,3 @@ instance (MappableNames a, Ord a) => MappableNames (Set a) where
 instance (MappableNames (f e), MappableNames (g e)) => MappableNames ((f :+: g) e) where
   mapNames func (Inl f) = Inl $ mapNames func f
   mapNames func (Inr g) = Inr $ mapNames func g
-
-
------------------
--- Typed Names --
------------------
-
-data Type = Bool
-          | Int
-          deriving (Show, Eq, Ord)
-
-instance SMTString Type where
-  toSMT ty = case ty of
-    Bool -> "Bool"
-    Int  -> "Int"
-
-data TypedName = TypedName { tn_name :: Name
-                           , tn_type :: Type
-                           } deriving (Show, Eq, Ord)
-
-class CollectableTypedNames a where
-  typedNamesIn :: a -> Set TypedName
-
-instance (CollectableTypedNames (f e), CollectableTypedNames (g e))
-          => CollectableTypedNames ((f :+: g) e) where
-  typedNamesIn (Inl f) = typedNamesIn f
-  typedNamesIn (Inr g) = typedNamesIn g
-
-instance CollectableTypedNames a => CollectableTypedNames [a] where
-  typedNamesIn as = Set.unions $ map typedNamesIn as
-
-instance CollectableNames TypedName where
-  namesIn (TypedName name _) = Set.singleton name
-
-instance CollectableTypedNames TypedName where
-  typedNamesIn tn = Set.singleton tn
-
-instance MappableNames TypedName where
-  mapNames f (TypedName name ty) = TypedName (f name) ty
-
-instance FreshableNames TypedName where
-  freshen (TypedName name ty) = do
-    name' <- freshen name
-    return $ TypedName name' ty
-
-instance SMTString TypedName where
-  toSMT (TypedName name ty) = "(" <> toSMT name <> " " <> toSMT ty <> ")"
-
-instance Pretty TypedName where
-  pretty (TypedName name _) = pretty name
-
-withType :: Type -> [Name] -> [TypedName]
-withType typ = map (\n -> TypedName n typ)

@@ -101,7 +101,7 @@ runBackward expectedResult progFile pre post = do
         loopHeadStates <- collectLoopHeadStates evalCtx (mkTestStartStates prog) prog
         let ptCtx = BackwardPTContext
                     funEnv
-                    (ImpPieContext loopHeadStates (typedNamesIn prog) (litsIn prog))
+                    (ImpPieContext loopHeadStates (namesIn prog) (litsIn prog))
         impBackwardPT ptCtx prog post
   assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do
@@ -109,8 +109,8 @@ runBackward expectedResult progFile pre post = do
       assertSMTResult expectedResult smtResult
 
 
-varX = Var $ TypedName (Name "x" 0) Int
-varY = Var $ TypedName (Name "y" 0) Int
+varX = Var $ Name "x" 0
+varY = Var $ Name "y" 0
 
 
 test_forwardAddOne_valid        = runForward  ExpectSuccess "addOne.fimp" ATrue $ Eq varX (Num 1)

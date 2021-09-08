@@ -4,7 +4,7 @@ module Ceili.FeatureLearning.LinearInequalities
 
 import Ceili.Assertion ( Arith(..), Assertion(..) )
 import qualified Ceili.InvariantInference.CollectionUtil as Collection
-import Ceili.Name ( TypedName )
+import Ceili.Name
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
@@ -16,7 +16,7 @@ import qualified Data.Set as Set
 --   `name` will appear at most once.
 -- + If `size` is larger than the set of available names, it is implicity
 --   reduced to the largest value the given set of names accomodates.
-linearInequalities :: (Num t, Ord t) => Set TypedName -> Set t -> Int -> Set (Assertion t)
+linearInequalities :: (Num t, Ord t) => Set Name -> Set t -> Int -> Set (Assertion t)
 linearInequalities names lits size = let
   size' = if (Set.size names < size) then Set.size names else size
   arithLits   = Set.map Num $ Set.insert 0

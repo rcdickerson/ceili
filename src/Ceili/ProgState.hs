@@ -6,7 +6,6 @@ module Ceili.ProgState
   ( ProgState
   , pretty
   , prettySMTState
-  , withIntTypedKeys
   ) where
 
 import Ceili.Name
@@ -16,9 +15,6 @@ import qualified Data.Map as Map
 import Prettyprinter
 
 type ProgState a = Map Name a
-
-withIntTypedKeys :: Integral a => (ProgState a) -> Map TypedName a
-withIntTypedKeys = Map.mapKeys (\n -> TypedName n Int)
 
 instance CollectableNames (ProgState a) where
   namesIn = Map.keysSet

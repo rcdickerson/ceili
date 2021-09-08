@@ -2,8 +2,6 @@ module Ceili
   ( Ceili
   , Env(..)
   , Name(..)
-  , Type(..)
-  , TypedName(..)
   , runCeili
   , showSMT
   ) where

@@ -38,7 +38,7 @@ type FeatureVector = Vector Bool
 -- formula sizes before moving on to larger ones. If no possible combination of
 -- the given assertions separates the positive and negative samples, the
 -- algorithm will not terminate.
-learnBoolExpr :: SMTString t =>
+learnBoolExpr :: (SMTString t, SMTTypeString t) =>
                  Vector (Assertion t)
               -> Vector FeatureVector
               -> Vector FeatureVector
@@ -47,7 +47,7 @@ learnBoolExpr features posFV negFV = do
   log_d "[PAC] Begin learning boolean expression..."
   boolLearn features posFV negFV 1 Vector.empty
 
-boolLearn :: SMTString t =>
+boolLearn :: (SMTString t, SMTTypeString t) =>
              Vector (Assertion t)
           -> Vector FeatureVector
           -> Vector FeatureVector

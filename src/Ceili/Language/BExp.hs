@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -12,7 +13,7 @@ module Ceili.Language.BExp
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
-import Ceili.Language.AExp ( AExp(..), aexpToArith )
+import Ceili.Language.AExp ( AExp(..), AExpOperations, aexpToArith )
 import Ceili.Evaluation
 import Ceili.Name
 import Ceili.Literal
@@ -52,9 +53,6 @@ instance CollectableNames (BExp t) where
     BGe  lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     BLt  lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
     BGt  lhs rhs -> Set.union (namesIn lhs) (namesIn rhs)
-
-instance Integral t => CollectableTypedNames (BExp t) where
-  typedNamesIn bexp = Set.map (\n -> TypedName n Int) $ namesIn bexp
 
 instance MappableNames (BExp t) where
   mapNames _ BTrue        = BTrue
@@ -116,22 +114,23 @@ bexpToAssertion bexp = case bexp of
 -- Evaluation --
 ----------------
 
-instance Integral t => Evaluable c t (BExp t) Bool where
+instance (Eq t, Ord t, AExpOperations t)
+         => Evaluable c t (BExp t) Bool where
   eval ctx st bexp = case bexp of
     BTrue      -> True
     BFalse     -> False
     BNot b     -> not $ eval ctx st b
     BAnd b1 b2 -> (eval ctx st b1) && (eval ctx st b2)
     BOr  b1 b2 -> (eval ctx st b1) || (eval ctx st b2)
-    BEq  a1 a2 -> ((eval ctx st a1) :: Integer) == (eval ctx st a2)
-    BNe  a1 a2 -> (evalInt ctx st a1) /= (evalInt ctx st a2)
-    BLe  a1 a2 -> (evalInt ctx st a1) <= (evalInt ctx st a2)
-    BGe  a1 a2 -> (evalInt ctx st a1) >= (evalInt ctx st a2)
-    BGt  a1 a2 -> (evalInt ctx st a1) >  (evalInt ctx st a2)
-    BLt  a1 a2 -> (evalInt ctx st a1) <  (evalInt ctx st a2)
+    BEq  a1 a2 -> (evalAExp ctx st a1) == (evalAExp ctx st a2)
+    BNe  a1 a2 -> (evalAExp ctx st a1) /= (evalAExp ctx st a2)
+    BLe  a1 a2 -> (evalAExp ctx st a1) <= (evalAExp ctx st a2)
+    BGe  a1 a2 -> (evalAExp ctx st a1) >= (evalAExp ctx st a2)
+    BGt  a1 a2 -> (evalAExp ctx st a1) >  (evalAExp ctx st a2)
+    BLt  a1 a2 -> (evalAExp ctx st a1) <  (evalAExp ctx st a2)
     where
-      evalInt :: Integral t => c -> ProgState t -> AExp t -> Integer
-      evalInt = eval
+      evalAExp :: AExpOperations t => c -> ProgState t -> AExp t -> t
+      evalAExp = eval
 
 
 --------------------

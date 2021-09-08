@@ -16,7 +16,8 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 
-runAndAssertEquivalent :: SMTString t => Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
+runAndAssertEquivalent :: (SMTString t, SMTTypeString t)
+                       => Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
 runAndAssertEquivalent expected actual = do
   result <- runCeili emptyEnv actual
   case result of
@@ -28,7 +29,7 @@ runAndAssertEquivalent expected actual = do
 
 
 test_createFV = let
-  x = Var $ TypedName (Name "x" 0) Int
+  x = Var $ Name "x" 0
   assertions = Vector.fromList [Eq @Integer x (Num 0), Lt x (Num 3), Lte x (Num 3)]
   states = Vector.fromList [ Map.fromList [(Name "x" 0, 0)]
                            , Map.fromList [(Name "x" 0, 2)]
@@ -178,7 +179,7 @@ test_getConflict_twoPossibleAnswers = let
   in assertEqual expected $ getConflict posFVs negFVs goodTests badTests
 
 test_pie = let
-  x         = TypedName (Name "x" 0) Int
+  x         = Name "x" 0
   names     = Set.singleton x
   lits      = Set.empty
   goodTests = Vector.fromList [ Map.fromList [(Name "x" 0, 1)]

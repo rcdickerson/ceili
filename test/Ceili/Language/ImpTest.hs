@@ -15,8 +15,6 @@ import qualified Data.Set as Set
 name n = Name n 0
 x = name "x"
 y = name "y"
-ix = TypedName x Int
-iy = TypedName y Int
 mkSt assocList = Map.fromList $ map (\(n,v) -> (Name n 0, v)) assocList
 
 prog1 :: ImpProgram Integer
@@ -52,7 +50,7 @@ test_forwardPT = do
     Right actual -> assertEqual expected actual
 
 test_backwardPT = do
-  let post = Eq (Var iy) (Num @Integer 1)
+  let post = Eq (Var y) (Num @Integer 1)
   let expected = assertion
         "(and \
         \  (=> (< 5 0) (= 0 1)) \

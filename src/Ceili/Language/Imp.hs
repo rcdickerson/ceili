@@ -234,30 +234,6 @@ instance CollectableNames (ImpProgram t)
   where namesIn (In p) = namesIn p
 
 
----------------------------
--- CollectableTypedNames --
----------------------------
-
-instance CollectableTypedNames (ImpSkip t e) where
-  typedNamesIn ImpSkip = Set.empty
-
-instance Integral t => CollectableTypedNames (ImpAsgn t e) where
-  typedNamesIn (ImpAsgn var aexp) = Set.insert (TypedName var Int) $ typedNamesIn aexp
-
-instance CollectableTypedNames e => CollectableTypedNames (ImpSeq t e) where
-  typedNamesIn (ImpSeq stmts) = typedNamesIn stmts
-
-instance (Integral t, CollectableTypedNames e) => CollectableTypedNames (ImpIf t e) where
-  typedNamesIn (ImpIf cond bThen bElse) = Set.unions
-    [typedNamesIn cond, typedNamesIn bThen, typedNamesIn bElse]
-
-instance (Integral t, CollectableTypedNames e) => CollectableTypedNames (ImpWhile t e) where
-  typedNamesIn (ImpWhile cond body _) = Set.union (typedNamesIn cond) (typedNamesIn body)
-
-instance Integral t => CollectableTypedNames (ImpProgram t)
-  where typedNamesIn (In p) = typedNamesIn p
-
-
 -------------------
 -- MappableNames --
 -------------------
@@ -435,7 +411,7 @@ instance ( FuelTank c
 type LoopHeadStates t = Map UUID (IterStateMap t)
 type IterStateMap t   = Map Int (Set (ProgState t))
 
-class Evaluable ctx t expr (ImpStep t) => CollectLoopHeadStates ctx expr t where
+class CollectLoopHeadStates ctx expr t where
   collectLoopHeadStates :: ctx -> [ProgState t] -> expr -> Ceili (LoopHeadStates t)
 
 instance CollectLoopHeadStates c (ImpSkip t e) t where
@@ -446,11 +422,14 @@ instance Evaluable c t (AExp t) t => CollectLoopHeadStates c (ImpAsgn t e) t whe
 
 instance ( Ord t
          , CollectLoopHeadStates c e t
+         , Evaluable c t e (ImpStep t)
          )
          => CollectLoopHeadStates c (ImpSeq t e) t where
   collectLoopHeadStates = seqHeadStates
 
-seqHeadStates :: (Ord t, CollectLoopHeadStates c e t)
+seqHeadStates :: ( Ord t
+                 , CollectLoopHeadStates c e t
+                 , Evaluable c t e (ImpStep t))
               => c
               -> [ProgState t]
               -> ImpSeq t e
@@ -481,6 +460,7 @@ instance ( FuelTank c
          , Ord t
          , Evaluable c t (BExp t) Bool
          , CollectLoopHeadStates c e t
+         , Evaluable c t e (ImpStep t)
          )
          => CollectLoopHeadStates c (ImpWhile t e) t where
   collectLoopHeadStates ctx sts loop@(ImpWhile cond body meta) = do
@@ -589,7 +569,7 @@ class ImpPieContextProvider ctx t where
 
 data ImpPieContext t = ImpPieContext
   { pc_loopHeadStates :: LoopHeadStates t
-  , pc_programNames   :: Set TypedName
+  , pc_programNames   :: Set Name
   , pc_programLits    :: Set t
   }
 
@@ -604,7 +584,7 @@ instance ImpBackwardPT c (ImpSkip t e) t where
 
 instance ImpBackwardPT c (ImpAsgn t e) t where
   impBackwardPT _ (ImpAsgn lhs rhs) post =
-    return $ A.subArith (TypedName lhs Int)
+    return $ A.subArith lhs
                         (aexpToArith rhs)
                         post
 
@@ -634,6 +614,7 @@ instance ImpBackwardPT c e t => ImpBackwardPT c (ImpIf t e) t where
 instance ( Num t
          , Ord t
          , SMTString t
+         , SMTTypeString t
          , AssertionParseable t
          , CollectableNames e
          , StatePredicate (Assertion t) t
@@ -648,7 +629,7 @@ instance ( Num t
     freshMapping  = snd $ buildFreshMap (buildFreshIds vars) vars
     (orig, fresh) = unzip $ Map.toList freshMapping
     freshen       = substituteAll orig fresh
-    qNames        = Set.toList $ namesInToInt fresh
+    qNames        = Set.toList $ namesIn fresh
     in do
       mInv <- getLoopInvariant ctx loop post
       inv <- case mInv of
@@ -666,6 +647,7 @@ instance ( Num t
 getLoopInvariant :: ( Num t
                     , Ord t
                     , SMTString t
+                    , SMTTypeString t
                     , AssertionParseable t
                     , StatePredicate (Assertion t) t
                     , ImpPieContextProvider ctx t
@@ -699,6 +681,7 @@ instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
 instance ( Num t
          , Ord t
          , SMTString t
+         , SMTTypeString t
          , AssertionParseable t
          , StatePredicate (Assertion t) t
          , ImpPieContextProvider c t)
@@ -722,10 +705,8 @@ instance ImpForwardPT c (ImpAsgn t e) t where
     let
       subPre   = substitute lhs lhs' pre
       rhsArith = aexpToArith rhs
-      ilhs     = TypedName lhs  Int
-      ilhs'    = TypedName lhs' Int
-      subRhs   = A.subArith ilhs (A.Var @t ilhs') rhsArith
-    return $ A.Exists [ilhs'] $ A.And [A.Eq (A.Var ilhs) subRhs, subPre]
+      subRhs   = A.subArith lhs (A.Var @t lhs') rhsArith
+    return $ A.Exists [lhs'] $ A.And [A.Eq (A.Var lhs) subRhs, subPre]
 
 instance ImpForwardPT c e t => ImpForwardPT c (ImpSeq t e) t where
   impForwardPT = impSeqForwardPT
@@ -752,13 +733,14 @@ instance ImpForwardPT c e t => ImpForwardPT c (ImpIf t e) t where
 instance ( Num t
          , Ord t
          , SMTString t
+         , SMTTypeString t
          , CollectableNames e
          , ImpForwardPT c e t )
         => ImpForwardPT c (ImpWhile t e) t where
   impForwardPT ctx (ImpWhile b body meta) pre = do
     let cond = bexpToAssertion b
     inv <- case (iwm_invariant meta) of
-      Nothing  -> Houdini.infer (namesInToInt body) Set.empty 2 pre (impForwardPT ctx body) -- TODO: Lits
+      Nothing  -> Houdini.infer (namesIn body) Set.empty 2 pre (impForwardPT ctx body) -- TODO: Lits
       Just inv -> return inv
     bodyInvSP <- impForwardPT ctx body inv
     log_d "Checking loop invariant verification conditions..."
@@ -774,15 +756,6 @@ instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
   impForwardPT ctx (Inl f) pre = impForwardPT ctx f pre
   impForwardPT ctx (Inr f) pre = impForwardPT ctx f pre
 
-instance (Num t, Ord t, SMTString t) => ImpForwardPT c (ImpProgram t) t where
+instance (Num t, Ord t, SMTString t, SMTTypeString t)
+         => ImpForwardPT c (ImpProgram t) t where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre
-
-
--------------
--- Utility --
--------------
-
-namesInToInt :: CollectableNames c => c -> Set TypedName
-namesInToInt c = let
-   names = namesIn c
-   in Set.map (\n -> TypedName n Int) names

@@ -35,7 +35,8 @@ envImp prog = defaultEnv (namesIn prog)
 envFunImp :: FunImpProgram t -> Env
 envFunImp prog = defaultEnv (namesIn prog)
 
-assertValid :: SMTString t => Assertion t -> IO ()
+assertValid :: (SMTString t, SMTTypeString t)
+            => Assertion t -> IO ()
 assertValid assertion = do
   result <- withFastLogger LogNone $ \logger ->
             SMT.checkValidFL logger assertion
@@ -44,7 +45,8 @@ assertValid assertion = do
     SMT.Invalid s    -> assertFailure $ "Invalid: " ++ s
     SMT.ValidUnknown -> assertFailure "Unable to validate, solver returned UNK."
 
-assertImplies :: SMTString t => Assertion t -> Assertion t -> IO ()
+assertImplies :: (SMTString t, SMTTypeString t)
+              => Assertion t -> Assertion t -> IO ()
 assertImplies a1 a2 = do
   let imp = Imp a1 a2
   result <- withFastLogger LogNone $ \logger ->
@@ -54,7 +56,8 @@ assertImplies a1 a2 = do
     SMT.Invalid s    -> assertFailure $ unlines ["Invalid implication: ", showSMT a1, "=>", showSMT a2, "model:", s]
     SMT.ValidUnknown -> assertFailure "Unable to establish implication, solver returned UNK."
 
-assertEquivalent :: SMTString t => Assertion t -> Assertion t -> IO ()
+assertEquivalent :: (SMTString t, SMTTypeString t)
+                 => Assertion t -> Assertion t -> IO ()
 assertEquivalent a1 a2 = do
   let iff = And [ Imp a1 a2, Imp a2 a1 ]
   result <- withFastLogger LogNone $ \logger ->

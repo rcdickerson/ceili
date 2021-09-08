@@ -10,11 +10,11 @@ import Ceili.Name
 import Ceili.SMTString
 
 -- Some dummy names and assertions for convenience.
-x0 = TypedName (Name "x" 0) Int
-x1 = TypedName (Name "x" 1) Int
-x2 = TypedName (Name "x" 2) Int
-y0 = TypedName (Name "y" 0) Int
-sc8875 = TypedName (Name "SC" 8875) Bool
+x0 = Name "x" 0
+x1 = Name "x" 1
+x2 = Name "x" 2
+y0 = Name "y" 0
+sc8875 = Name "SC" 8875
 
 
 assertion1 :: Assertion Integer
@@ -28,7 +28,7 @@ assertion2 = Forall [x0, y0] $ Exists [x1] $ Lt (Var x1) (Var x2)
 assertion2SMT = "(forall ((x Int) (y Int)) (exists ((x!1 Int)) (< x!1 x!2)))"
 
 assertion3 :: Assertion Integer
-assertion3 = And [And [Exists [TypedName (Name "z" 5990) Int]
+assertion3 = And [And [Exists [Name "z" 5990]
                        (Imp (Atom sc8875) AFalse)]]
 assertion3SMT = "(and (and (exists ((z!5990 Int)) (=> SC!8875 false))))"
 
@@ -58,12 +58,12 @@ test_subArith = do
               ( subArith @Integer x0 (Add [ Var x0, Num 1 ]) assertion1 )
   assertEqual ( Forall [x0, y0] $ Exists [x1] $ Lt (Var x1) (Var x2) )
               ( subArith @Integer x0 (Add [ Var x0, Num 1 ]) assertion2 )
-  assertEqual ( And [And [Exists [TypedName (Name "z" 5990) Int]
+  assertEqual ( And [And [Exists [Name "z" 5990]
                        (Imp (Atom sc8875) AFalse)]])
               ( subArith @Integer sc8875 (Add [ Var x0, Num 1 ]) assertion3 )
-  let assertion3' = And [And [Exists [TypedName (Name "z" 5990) Int]
+  let assertion3' = And [And [Exists [Name "z" 5990]
                        (Imp (Eq (Var x0) (Var x1)) AFalse)]]
-  assertEqual ( And @Integer [And [Exists [TypedName (Name "z" 5990) Int]
+  assertEqual ( And @Integer [And [Exists [Name "z" 5990]
                        (Imp (Eq (Add [Var x0, Num 1]) (Var x1)) AFalse)]])
               ( subArith @Integer x0 (Add [ Var x0, Num 1 ]) assertion3' )
 

@@ -11,15 +11,15 @@ module Ceili.InvariantInference.Houdini
 import Ceili.Assertion ( Assertion(..) )
 import Ceili.CeiliEnv
 import Ceili.FeatureLearning.LinearInequalities
-import Ceili.Name ( TypedName )
+import Ceili.Name
 import qualified Ceili.SMT as SMT
 import Ceili.SMTString
 import Control.Monad ( filterM )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
-infer :: (Num t, Ord t, SMTString t)
-      => Set TypedName
+infer :: (Num t, Ord t, SMTString t, SMTTypeString t)
+      => Set Name
       -> Set t
       -> Int
       -> Assertion t
@@ -35,8 +35,8 @@ infer names lits size precond computeSP = do
   log_i $ "[Houdini] Invariant: " ++ (show $ And inductiveClauses)
   return $ And inductiveClauses
 
-findCandidates :: (Num t, Ord t, SMTString t)
-               => Set TypedName
+findCandidates :: (Num t, Ord t, SMTString t, SMTTypeString t)
+               => Set Name
                -> Set t
                -> Int
                -> Assertion t
@@ -46,7 +46,7 @@ findCandidates names lits size precond = do
   log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)
   filterM (checkValidB . Imp precond) $ Set.toList candidates
 
-houdini :: SMTString t =>
+houdini :: (SMTString t, SMTTypeString t) =>
            [Assertion t]
         -> (Assertion t -> Ceili (Assertion t))
         -> Ceili [Assertion t]
