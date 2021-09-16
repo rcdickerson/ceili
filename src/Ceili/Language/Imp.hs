@@ -30,6 +30,7 @@ module Ceili.Language.Imp
   , ImpWhileMetadata(..)
   , IterStateMap
   , LoopHeadStates
+  , MapImpType(..)
   , Name(..)
   , ProgState
   , TransformMetadata(..)
@@ -325,28 +326,36 @@ instance Ord t => CollectableLiterals (ImpProgram t) t where
 -- Map Types --
 ---------------
 
-class MapImpType f f' t t' where
+class MapImpType t t' f f' where
   mapImpType :: (t -> t') -> f -> f'
 
-instance MapImpType (ImpSkip t e) (ImpSkip t' e) t t'
+instance MapImpType t t' (ImpSkip t e) (ImpSkip t' e') where
+  mapImpType _ _ = ImpSkip
 
-instance MapImpType (ImpAsgn t e) (ImpAsgn t' e) t t' where
-  mapImpType typef (ImpAsgn lhs rhs) = ImpAsgn lhs (fmap typef rhs)
+instance MapImpType t t' (ImpAsgn t e) (ImpAsgn t' e') where
+  mapImpType f (ImpAsgn lhs rhs) = ImpAsgn lhs (fmap f rhs)
 
-instance MapImpType e e t t' => MapImpType (ImpSeq t e) (ImpSeq t' e) t t' where
-  mapImpType typef (ImpSeq stmts) = ImpSeq $ map (mapImpType typef) stmts
+instance MapImpType t t' e e' => MapImpType t t' (ImpSeq t e) (ImpSeq t' e') where
+  mapImpType f (ImpSeq stmts) = ImpSeq $ map (mapImpType f) stmts
 
-instance MapImpType (ImpIf t e) (ImpIf t' e) t t'
-instance MapImpType (ImpWhile t e) (ImpWhile t' e) t t'
+instance MapImpType t t' e e' => MapImpType t t' (ImpIf t e) (ImpIf t' e') where
+  mapImpType f (ImpIf cond tbranch ebranch) = ImpIf (fmap f cond)
+                                                    (mapImpType f tbranch)
+                                                    (mapImpType f ebranch)
 
-instance ( MapImpType (f t e) (f' t' e) t t'
-         , MapImpType (g t e) (g' t' e) t t'
-         ) => MapImpType ((f t :+: g t) e) ((f' t' :+: g' t') e) t t' where
-  mapImpType typef (Inl f) = Inl $ mapImpType typef f
-  mapImpType typef (Inr f) = Inr $ mapImpType typef f
+instance MapImpType t t' e e' => MapImpType t t' (ImpWhile t e) (ImpWhile t' e') where
+  mapImpType f (ImpWhile cond body meta) = ImpWhile (fmap f cond)
+                                                    (mapImpType f body)
+                                                    (fmap f meta)
 
-instance MapImpType (ImpProgram t) (ImpProgram t') t t' where
-  mapImpType typef (In p) = In $ mapImpType typef p
+instance ( MapImpType t t' (f e) (f' e')
+         , MapImpType t t' (g e) (g' e')
+         ) => MapImpType t t' ((f :+: g) e) ((f' :+: g') e') where
+  mapImpType func (Inl f) = Inl $ mapImpType func f
+  mapImpType func (Inr g) = Inr $ mapImpType func g
+
+instance MapImpType t t' (ImpProgram t) (ImpProgram t') where
+  mapImpType f (In p) = In $ mapImpType f p
 
 
 -----------------
