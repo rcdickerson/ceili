@@ -79,7 +79,7 @@ import Prettyprinter
 data FunImpl e = FunImpl { fimpl_params  :: [Name]
                          , fimpl_body    :: e
                          , fimpl_returns :: [Name]
-                         } deriving (Eq, Show)
+                         } deriving (Eq, Show, Functor)
 
 instance CollectableNames e => CollectableNames (FunImpl e) where
   namesIn (FunImpl params body returns) =
