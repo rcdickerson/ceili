@@ -37,6 +37,7 @@ module Ceili.Language.FunImp
   , ImpWhileMetadata(..)
   , LoopHeadStates
   , Name(..)
+  , TransformMetadata(..)
   , eval
   , impAsgn
   , impCall

@@ -7,8 +7,8 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Ceili.Language.Compose
-  ( (:+:)(..),
-    (:<:)(..)
+  ( (:+:)(..)
+  , (:<:)(..)
   ) where
 
 import Prettyprinter
