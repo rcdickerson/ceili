@@ -64,7 +64,8 @@ type BasicImpProg t f = ( ImpAsgn t  :<: f
                         , ImpIf t    :<: f
                         , ImpSeq t   :<: f
                         , ImpSkip t  :<: f
-                        , ImpWhile t :<: f)
+                        , ImpWhile t :<: f
+                        )
 
 statement :: ( AExpParseable t
              , AssertionParseable t

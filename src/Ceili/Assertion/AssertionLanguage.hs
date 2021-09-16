@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -41,7 +42,7 @@ data Arith t = Num t
              | Div (Arith t) (Arith t)
              | Mod (Arith t) (Arith t)
              | Pow (Arith t) (Arith t)
-           deriving (Eq, Ord)
+           deriving (Eq, Ord, Functor)
 
 instance SMTString t => Show (Arith t) where
   show = S8.unpack . toSMT
@@ -142,7 +143,7 @@ data Assertion t = ATrue
                  | Gte      (Arith t) (Arith t)
                  | Forall   [Name] (Assertion t)
                  | Exists   [Name] (Assertion t)
-               deriving (Eq, Ord)
+               deriving (Eq, Ord, Functor)
 
 instance (SMTString t, SMTTypeString t) => Show (Assertion t) where
   show = S8.unpack . toSMT

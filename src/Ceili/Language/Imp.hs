@@ -30,6 +30,7 @@ module Ceili.Language.Imp
   , ImpWhileMetadata(..)
   , IterStateMap
   , LoopHeadStates
+  , MapImpType(..)
   , Name(..)
   , ProgState
   , TransformMetadata(..)
@@ -98,7 +99,10 @@ data ImpSeq t e = ImpSeq [e]
 data ImpIf t e = ImpIf (BExp t) e e
   deriving (Eq, Ord, Show, Functor)
 
-data ImpWhile t e = ImpWhile (BExp t) e (ImpWhileMetadata t)
+data ImpWhile t e = ImpWhile { impWhile_cond :: BExp t
+                             , impWhile_body :: e
+                             , impWhile_meta :: ImpWhileMetadata t
+                             }
   deriving (Eq, Ord, Show, Functor)
 
 type ImpProgram t = ImpExpr t ( ImpSkip t
@@ -115,7 +119,7 @@ data ImpWhileMetadata t =
   ImpWhileMetadata { iwm_id        :: Maybe UUID
                    , iwm_invariant :: Maybe (Assertion t)
                    , iwm_measure   :: Maybe (A.Arith t)
-                   } deriving (Eq, Ord, Show)
+                   } deriving (Eq, Ord, Show, Functor)
 
 emptyWhileMetadata :: ImpWhileMetadata t
 emptyWhileMetadata = ImpWhileMetadata Nothing Nothing Nothing
@@ -153,7 +157,9 @@ instance TransformMetadata m e t => TransformMetadata m (ImpWhile t e) t where
     body' <- transformMetadata body f
     meta' <- f meta
     return $ ImpWhile cond body' meta'
-instance (TransformMetadata m (f e) t, TransformMetadata m (g e) t) => TransformMetadata m ((f :+: g) e) t where
+instance ( TransformMetadata m (f e) t
+         , TransformMetadata m (g e) t
+         ) => TransformMetadata m ((f :+: g) e) t where
   transformMetadata (Inl f) func = do f' <- transformMetadata f func; return $ Inl f'
   transformMetadata (Inr g) func = do g' <- transformMetadata g func; return $ Inr g'
 instance Monad m => TransformMetadata m (ImpProgram t) t where
@@ -314,6 +320,42 @@ instance (Ord t, CollectableLiterals e t) => CollectableLiterals (ImpWhile t e) 
 
 instance Ord t => CollectableLiterals (ImpProgram t) t where
   litsIn (In f) = litsIn f
+
+
+---------------
+-- Map Types --
+---------------
+
+class MapImpType t t' f f' where
+  mapImpType :: (t -> t') -> f -> f'
+
+instance MapImpType t t' (ImpSkip t e) (ImpSkip t' e') where
+  mapImpType _ _ = ImpSkip
+
+instance MapImpType t t' (ImpAsgn t e) (ImpAsgn t' e') where
+  mapImpType f (ImpAsgn lhs rhs) = ImpAsgn lhs (fmap f rhs)
+
+instance MapImpType t t' e e' => MapImpType t t' (ImpSeq t e) (ImpSeq t' e') where
+  mapImpType f (ImpSeq stmts) = ImpSeq $ map (mapImpType f) stmts
+
+instance MapImpType t t' e e' => MapImpType t t' (ImpIf t e) (ImpIf t' e') where
+  mapImpType f (ImpIf cond tbranch ebranch) = ImpIf (fmap f cond)
+                                                    (mapImpType f tbranch)
+                                                    (mapImpType f ebranch)
+
+instance MapImpType t t' e e' => MapImpType t t' (ImpWhile t e) (ImpWhile t' e') where
+  mapImpType f (ImpWhile cond body meta) = ImpWhile (fmap f cond)
+                                                    (mapImpType f body)
+                                                    (fmap f meta)
+
+instance ( MapImpType t t' (f e) (f' e')
+         , MapImpType t t' (g e) (g' e')
+         ) => MapImpType t t' ((f :+: g) e) ((f' :+: g') e') where
+  mapImpType func (Inl f) = Inl $ mapImpType func f
+  mapImpType func (Inr g) = Inr $ mapImpType func g
+
+instance MapImpType t t' (ImpProgram t) (ImpProgram t') where
+  mapImpType f (In p) = In $ mapImpType f p
 
 
 -----------------
@@ -504,8 +546,7 @@ instance ( FuelTank c
          , Ord t
          , Evaluable c t (AExp t) t
          , Evaluable c t (BExp t) Bool
-         )
-         => CollectLoopHeadStates c (ImpProgram t) t where
+         ) => CollectLoopHeadStates c (ImpProgram t) t where
   collectLoopHeadStates fuel sts (In f) = collectLoopHeadStates fuel sts f
 
 unionLoopHeadStates :: Ord t => LoopHeadStates t -> LoopHeadStates t -> LoopHeadStates t
