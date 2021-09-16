@@ -4,11 +4,12 @@ module Ceili.Assertion.AssertionParser
   , ParseError
   , arithParser
   , assertionParser
+  , float
+  , integer
   , parseArith
   , parseAssertion
   ) where
 
-import           Data.Char ( toLower )
 import           Ceili.Assertion.AssertionLanguage ( Arith, Assertion )
 import qualified Ceili.Assertion.AssertionLanguage as A
 import           Ceili.Name ( Name(..) )
@@ -46,7 +47,7 @@ languageDef = Token.LanguageDef
 
 lexer = Token.makeTokenParser languageDef
 
-float      = Token.float    lexer
+float      = Token.float      lexer
 identifier = Token.identifier lexer
 reserved   = Token.reserved   lexer
 reservedOp = Token.reservedOp lexer
