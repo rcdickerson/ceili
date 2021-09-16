@@ -36,6 +36,7 @@ module Ceili.Language.FunImp
   , ImpWhile(..)
   , ImpWhileMetadata(..)
   , LoopHeadStates
+  , MapImpType(..)
   , Name(..)
   , TransformMetadata(..)
   , eval
@@ -152,6 +153,9 @@ instance Ord t => CollectableLiterals (ImpCall t e) t where
 instance Monad m => TransformMetadata m (ImpCall t e) t where
   transformMetadata call _ = return call
 
+instance MapImpType t t' (ImpCall t e) (ImpCall t' e') where
+  mapImpType f (ImpCall cid args assignees) = ImpCall cid (map (fmap f) args) assignees
+
 
 ---------------------
 -- FunImp Language --
@@ -178,6 +182,9 @@ instance Ord t => CollectableLiterals (FunImpProgram t) t where
 
 instance Monad m => TransformMetadata m (FunImpProgram t) t where
   transformMetadata (In prog) f = do prog' <- transformMetadata prog f; return $ In prog'
+
+instance MapImpType t t' (FunImpProgram t) (FunImpProgram t') where
+  mapImpType f (In p) = In $ mapImpType f p
 
 impCall :: (ImpCall t :<: f) => CallId -> [AExp t] -> [Name] -> ImpExpr t f
 impCall cid args assignees = inject $ ImpCall cid args assignees
