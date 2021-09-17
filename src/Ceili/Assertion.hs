@@ -1,6 +1,8 @@
 module Ceili.Assertion
   ( Arith(..)
+  , ArithAlgebra(..)
   , Assertion(..)
+  , AssertionAlgebra(..)
   , AssertionParseable(..)
   , Name(..)
   , ParseError
