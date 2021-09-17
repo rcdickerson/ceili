@@ -1,14 +1,18 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Ceili.Assertion.AssertionLanguage
   ( Arith(..)
+  , ArithAlgebra(..)
   , Assertion(..)
+  , AssertionAlgebra(..)
   , Name(..)
   , SubstitutableArith(..)
   , eval
@@ -105,24 +109,49 @@ instance SMTString t => SMTString (Arith t) where
     Mod a1 a2 -> toSexp "mod" [a1, a2]
     Pow a1 a2 -> toSexp "^"   [a1, a2]
 
-instance Integral t => Evaluable c t (Arith t) t where
-   eval _ = evalArith
 
-evalArith :: Integral t => ProgState t -> Arith t -> t
+----------------------
+-- Arith Evaluation --
+----------------------
+
+class ArithAlgebra t where
+  arZero :: t
+  arOne  :: t
+  arAdd  :: t -> t -> t
+  arSub  :: t -> t -> t
+  arMul  :: t -> t -> t
+  arDiv  :: t -> t -> t
+  arMod  :: t -> t -> t
+  arExp  :: t -> t -> t
+
+instance Integral t => ArithAlgebra t where
+  arZero = 0
+  arOne  = 1
+  arAdd  = (+)
+  arSub  = (-)
+  arMul  = (*)
+  arDiv  = quot
+  arMod  = mod
+  arExp  = (^)
+
+evalArith :: ArithAlgebra t => ProgState t -> Arith t -> t
 evalArith state arith = case arith of
   Num i     -> i
   Var v     -> case Map.lookup v state of
-                 Nothing -> 0
+                 Nothing -> arZero
                  Just n  -> n
-  Add as    -> foldr (+) 0 $ map (evalArith state) as
+  Add as    -> foldr arAdd arZero $ map (evalArith state) as
   Sub as    -> case as of
-                 []      -> 0
-                 (a:as') -> foldl (-) (evalArith state a)
+                 []      -> arZero
+                 (a:as') -> foldl arSub (evalArith state a)
                             $ map (evalArith state) as'
-  Mul as    -> foldr (*) 1 $ map (evalArith state) as
-  Div a1 a2 -> (evalArith state a1) `quot` (evalArith state a2)
-  Mod a1 a2 -> (evalArith state a1) `mod`  (evalArith state a2)
-  Pow a1 a2 -> (evalArith state a1) ^      (evalArith state a2)
+  Mul as    -> foldr arMul arOne $ map (evalArith state) as
+  Div a1 a2 -> arDiv (evalArith state a1) (evalArith state a2)
+  Mod a1 a2 -> arMod (evalArith state a1) (evalArith state a2)
+  Pow a1 a2 -> arExp (evalArith state a1) (evalArith state a2)
+
+instance ArithAlgebra t => Evaluable c t (Arith t) t where
+   eval _ = evalArith
 
 
 ----------------
@@ -221,23 +250,6 @@ instance Ord t => CollectableLiterals (Assertion t) t where
     Forall _ a -> litsIn a
     Exists _ a -> litsIn a
 
-instance Integral t => Evaluable c t (Assertion t) Bool where
- eval ctx state assertion = case assertion of
-   ATrue     -> True
-   AFalse    -> False
-   Atom _    -> False -- This assumes states cannot store booleans.
-   Not a     -> not $ eval ctx state a
-   And as    -> and $ map (eval ctx state) as
-   Or  as    -> or  $ map (eval ctx state) as
-   Imp a1 a2 -> not (eval ctx state a1) || eval ctx state a2
-   Eq  a1 a2 -> (evalArith state a1) == (evalArith state a2)
-   Lt  a1 a2 -> (evalArith state a1) <  (evalArith state a2)
-   Gt  a1 a2 -> (evalArith state a1) >  (evalArith state a2)
-   Lte a1 a2 -> (evalArith state a1) <= (evalArith state a2)
-   Gte a1 a2 -> (evalArith state a1) >= (evalArith state a2)
-   Forall _ _ -> error "Quantified formulas not supported."
-   Exists _ _ -> error "Quantified formulas not supported."
-
 instance (SMTString t, SMTTypeString t) => SMTString (Assertion t) where
   toSMT assertion = case assertion of
     ATrue         -> "true"
@@ -261,6 +273,42 @@ instance (SMTString t, SMTTypeString t) => SMTString (Assertion t) where
             typedQVar qvar = "(" <> toSMT qvar <> " " <> typeStr <> ")"
             qvarsSMT = S8.intercalate " " $ map typedQVar qvars
         in "(" <> name <> " (" <> qvarsSMT <> ") " <> toSMT body <> ")"
+
+
+--------------------------
+-- Assertion Evaluation --
+--------------------------
+
+class AssertionAlgebra t where
+  asEq  :: t -> t -> Bool
+  asLt  :: t -> t -> Bool
+  asGt  :: t -> t -> Bool
+  asLte :: t -> t -> Bool
+  asGte :: t -> t -> Bool
+
+instance (Ord t, Eq t) => AssertionAlgebra t where
+  asEq  = (==)
+  asLt  = (<)
+  asGt  = (>)
+  asLte = (<=)
+  asGte = (>=)
+
+instance (ArithAlgebra t, AssertionAlgebra t) => Evaluable c t (Assertion t) Bool where
+ eval ctx state assertion = case assertion of
+   ATrue     -> True
+   AFalse    -> False
+   Atom _    -> False -- This assumes states cannot store booleans.
+   Not a     -> not $ eval ctx state a
+   And as    -> and $ map (eval ctx state) as
+   Or  as    -> or  $ map (eval ctx state) as
+   Imp a1 a2 -> not   (eval ctx state a1) || eval ctx state a2
+   Eq  a1 a2 -> asEq  (evalArith state a1) (evalArith state a2)
+   Lt  a1 a2 -> asLt  (evalArith state a1) (evalArith state a2)
+   Gt  a1 a2 -> asGt  (evalArith state a1) (evalArith state a2)
+   Lte a1 a2 -> asLte (evalArith state a1) (evalArith state a2)
+   Gte a1 a2 -> asGte (evalArith state a1) (evalArith state a2)
+   Forall _ _ -> error "Quantified formula evaluation not supported."
+   Exists _ _ -> error "Quantified formula evaluation not supported."
 
 
 ------------------------------

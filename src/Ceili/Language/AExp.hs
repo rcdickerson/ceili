@@ -2,12 +2,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Ceili.Language.AExp
   ( AExp(..)
-  , AExpOperations(..)
+  , AExpAlgebra(..)
   , aexpToArith
   , eval
   ) where
@@ -102,25 +103,34 @@ aexpToArith aexp = case aexp of
 -- Evaluation --
 ----------------
 
-class Num t => AExpOperations t where
-  aExponent :: t -> t -> t
-  aDivide   :: t -> t -> t
-  aModulus  :: t -> t -> t
-instance (Num t, Integral t) => AExpOperations t where
-  aExponent = (^)
-  aDivide   = quot
-  aModulus  = mod
+class AExpAlgebra t where
+  aeZero :: t
+  aeAdd  :: t -> t -> t
+  aeSub  :: t -> t -> t
+  aeMul  :: t -> t -> t
+  aeDiv  :: t -> t -> t
+  aeExp  :: t -> t -> t
+  aeMod  :: t -> t -> t
 
-instance AExpOperations t => Evaluable c t (AExp t) t where
+instance Integral t => AExpAlgebra t where
+  aeZero = 0
+  aeAdd  = (+)
+  aeSub  = (-)
+  aeMul  = (*)
+  aeDiv  = quot
+  aeExp  = (^)
+  aeMod  = mod
+
+instance AExpAlgebra t => Evaluable c t (AExp t) t where
   eval ctx st aexp = case aexp of
     ALit i       -> i
-    AVar v       -> Map.findWithDefault 0 v st
-    AAdd lhs rhs -> (eval ctx st lhs) + (eval ctx st rhs)
-    ASub lhs rhs -> (eval ctx st lhs) - (eval ctx st rhs)
-    AMul lhs rhs -> (eval ctx st lhs) * (eval ctx st rhs)
-    ADiv lhs rhs -> aDivide   (eval ctx st lhs) (eval ctx st rhs)
-    AMod lhs rhs -> aModulus  (eval ctx st lhs) (eval ctx st rhs)
-    APow lhs rhs -> aExponent (eval ctx st lhs) (eval ctx st rhs)
+    AVar v       -> Map.findWithDefault (aeZero @t) v st
+    AAdd lhs rhs -> aeAdd (eval ctx st lhs) (eval ctx st rhs)
+    ASub lhs rhs -> aeSub (eval ctx st lhs) (eval ctx st rhs)
+    AMul lhs rhs -> aeMul (eval ctx st lhs) (eval ctx st rhs)
+    ADiv lhs rhs -> aeDiv (eval ctx st lhs) (eval ctx st rhs)
+    AMod lhs rhs -> aeMod (eval ctx st lhs) (eval ctx st rhs)
+    APow lhs rhs -> aeExp (eval ctx st lhs) (eval ctx st rhs)
 
 
 --------------------

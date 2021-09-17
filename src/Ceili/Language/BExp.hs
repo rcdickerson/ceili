@@ -4,16 +4,19 @@
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Ceili.Language.BExp
-  ( BExp(..)
+  ( AExpAlgebra(..)
+  , BExp(..)
+  , BExpAlgebra(..)
   , bexpToAssertion
   , eval
   ) where
 
 import Ceili.Assertion.AssertionLanguage ( Assertion)
 import qualified Ceili.Assertion.AssertionLanguage as A
-import Ceili.Language.AExp ( AExp(..), AExpOperations, aexpToArith )
+import Ceili.Language.AExp ( AExp(..), AExpAlgebra(..), aexpToArith )
 import Ceili.Evaluation
 import Ceili.Name
 import Ceili.Literal
@@ -114,22 +117,37 @@ bexpToAssertion bexp = case bexp of
 -- Evaluation --
 ----------------
 
-instance (Eq t, Ord t, AExpOperations t)
-         => Evaluable c t (BExp t) Bool where
+class BExpAlgebra t where
+  beEq  :: t -> t -> Bool
+  beLt  :: t -> t -> Bool
+  beGt  :: t -> t -> Bool
+  beLte :: t -> t -> Bool
+  beGte :: t -> t -> Bool
+
+instance (Ord t, Eq t) => BExpAlgebra t where
+  beEq  = (==)
+  beLt  = (<)
+  beGt  = (>)
+  beLte = (<=)
+  beGte = (>=)
+
+instance ( AExpAlgebra t
+         , BExpAlgebra t
+         ) => Evaluable c t (BExp t) Bool where
   eval ctx st bexp = case bexp of
     BTrue      -> True
     BFalse     -> False
     BNot b     -> not $ eval ctx st b
     BAnd b1 b2 -> (eval ctx st b1) && (eval ctx st b2)
     BOr  b1 b2 -> (eval ctx st b1) || (eval ctx st b2)
-    BEq  a1 a2 -> (evalAExp ctx st a1) == (evalAExp ctx st a2)
-    BNe  a1 a2 -> (evalAExp ctx st a1) /= (evalAExp ctx st a2)
-    BLe  a1 a2 -> (evalAExp ctx st a1) <= (evalAExp ctx st a2)
-    BGe  a1 a2 -> (evalAExp ctx st a1) >= (evalAExp ctx st a2)
-    BGt  a1 a2 -> (evalAExp ctx st a1) >  (evalAExp ctx st a2)
-    BLt  a1 a2 -> (evalAExp ctx st a1) <  (evalAExp ctx st a2)
+    BEq  a1 a2 -> beEq (evalAExp ctx st a1) (evalAExp ctx st a2)
+    BNe  a1 a2 -> not $ beEq (evalAExp ctx st a1) (evalAExp ctx st a2)
+    BLe  a1 a2 -> beLte (evalAExp ctx st a1) (evalAExp ctx st a2)
+    BGe  a1 a2 -> beGte (evalAExp ctx st a1) (evalAExp ctx st a2)
+    BGt  a1 a2 -> beGt  (evalAExp ctx st a1) (evalAExp ctx st a2)
+    BLt  a1 a2 -> beLt  (evalAExp ctx st a1) (evalAExp ctx st a2)
     where
-      evalAExp :: AExpOperations t => c -> ProgState t -> AExp t -> t
+      evalAExp :: AExpAlgebra t => c -> ProgState t -> AExp t -> t
       evalAExp = eval
 
 
