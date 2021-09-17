@@ -5,7 +5,8 @@
 -- Springer, Berlin, Heidelberg, 2001.
 
 module Ceili.InvariantInference.Houdini
-  ( infer
+  ( LIAlgebra(..)
+  , infer
   ) where
 
 import Ceili.Assertion ( Assertion(..) )
@@ -18,7 +19,7 @@ import Control.Monad ( filterM )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
-infer :: (Num t, Ord t, SMTString t, SMTTypeString t)
+infer :: (LIAlgebra t, SMTString t, SMTTypeString t)
       => Set Name
       -> Set t
       -> Int
@@ -35,7 +36,7 @@ infer names lits size precond computeSP = do
   log_i $ "[Houdini] Invariant: " ++ (show $ And inductiveClauses)
   return $ And inductiveClauses
 
-findCandidates :: (Num t, Ord t, SMTString t, SMTTypeString t)
+findCandidates :: (LIAlgebra t, SMTString t, SMTTypeString t)
                => Set Name
                -> Set t
                -> Int

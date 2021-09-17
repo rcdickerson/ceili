@@ -9,6 +9,7 @@
 
 module Ceili.InvariantInference.Pie
   ( FeatureVector
+  , LI.LIAlgebra(..)
   , PieEnv(..)
   , createFV
   , getConflict
@@ -71,8 +72,7 @@ plog_d msg = lift $ log_d msg
 -- LoopInvGen --
 ----------------
 
-loopInvGen :: ( Num t
-              , Ord t
+loopInvGen :: ( LI.LIAlgebra t
               , SMTString t
               , SMTTypeString t
               , StatePredicate (Assertion t) t
@@ -91,10 +91,9 @@ loopInvGen names literals backwardPT ctx cond body post goodTests = do
   let task = loopInvGen' backwardPT ctx cond body post goodTests
   evalStateT task $ PieEnv names literals
 
-loopInvGen' :: ( SMTString t
+loopInvGen' :: ( LI.LIAlgebra t
+               , SMTString t
                , SMTTypeString t
-               , Num t
-               , Ord t
                , StatePredicate (Assertion t) t
                , AssertionParseable t )
             => BackwardPT c p t
@@ -131,8 +130,7 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
            plog_i $ "[PIE] Inference complete. Learned invariant: " ++ showSMT weakenedInvar
            return $ Just weakenedInvar
 
-makeInductive :: ( Num t
-                 , Ord t
+makeInductive :: ( LI.LIAlgebra t
                  , SMTString t
                  , SMTTypeString t
                  , StatePredicate (Assertion t) t
@@ -217,8 +215,7 @@ paretoOptimize sufficient assertions =
 -- vPreGen --
 -------------
 
-vPreGen :: ( Num t
-           , Ord t
+vPreGen :: ( LI.LIAlgebra t
            , SMTString t
            , SMTTypeString t
            , StatePredicate (Assertion t) t
@@ -265,8 +262,7 @@ extractState assertion = case assertion of
 -- PIE --
 ---------
 
-pie :: ( Num t
-       , Ord t
+pie :: ( LI.LIAlgebra t
        , SMTString t
        , SMTTypeString t
        , StatePredicate (Assertion t) t )
@@ -299,8 +295,7 @@ getConflict posFVs negFVs goodTests badTests = do
 findConflict :: Vector FeatureVector -> Vector FeatureVector -> Maybe (Vector Bool)
 findConflict posFVs negFVs = Vector.find (\pos -> isJust $ Vector.find (== pos) negFVs) posFVs
 
-findAugmentingFeature :: ( Num t
-                         , Ord t
+findAugmentingFeature :: ( LI.LIAlgebra t
                          , SMTString t
                          , SMTTypeString t
                          , SMTString s

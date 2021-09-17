@@ -29,6 +29,7 @@ module Ceili.Language.Imp
   , ImpWhile(..)
   , ImpWhileMetadata(..)
   , IterStateMap
+  , LIAlgebra(..)
   , LoopHeadStates
   , MapImpType(..)
   , Name(..)
@@ -54,6 +55,7 @@ import Ceili.Assertion.AssertionParser ( AssertionParseable )
 import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.CeiliEnv
 import Ceili.Evaluation
+import Ceili.FeatureLearning.LinearInequalities ( LIAlgebra(..) )
 import qualified Ceili.InvariantInference.Houdini as Houdini
 import qualified Ceili.InvariantInference.Pie as Pie
 import Ceili.Language.AExp
@@ -652,8 +654,7 @@ instance ImpBackwardPT c e t => ImpBackwardPT c (ImpIf t e) t where
         ncond  = A.Not $ cond
     return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
 
-instance ( Num t
-         , Ord t
+instance ( LIAlgebra t
          , SMTString t
          , SMTTypeString t
          , AssertionParseable t
@@ -685,8 +686,7 @@ instance ( Num t
                     (freshen $ A.Imp (A.And [A.Not cond, inv]) post)
       return $ A.And [inv, loopWP, endWP]
 
-getLoopInvariant :: ( Num t
-                    , Ord t
+getLoopInvariant :: ( LIAlgebra t
                     , SMTString t
                     , SMTTypeString t
                     , AssertionParseable t
@@ -719,8 +719,7 @@ instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
   impBackwardPT ctx (Inl f) post = impBackwardPT ctx f post
   impBackwardPT ctx (Inr f) post = impBackwardPT ctx f post
 
-instance ( Num t
-         , Ord t
+instance ( LIAlgebra t
          , SMTString t
          , SMTTypeString t
          , AssertionParseable t
@@ -771,8 +770,7 @@ instance ImpForwardPT c e t => ImpForwardPT c (ImpIf t e) t where
     postS2 <- impForwardPT ctx s2 (A.And [pre, A.Not cond])
     return $ A.Or [postS1, postS2]
 
-instance ( Num t
-         , Ord t
+instance ( LIAlgebra t
          , SMTString t
          , SMTTypeString t
          , CollectableNames e
@@ -797,6 +795,8 @@ instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
   impForwardPT ctx (Inl f) pre = impForwardPT ctx f pre
   impForwardPT ctx (Inr f) pre = impForwardPT ctx f pre
 
-instance (Num t, Ord t, SMTString t, SMTTypeString t)
-         => ImpForwardPT c (ImpProgram t) t where
+instance ( LIAlgebra t
+         , SMTString t
+         , SMTTypeString t
+         ) => ImpForwardPT c (ImpProgram t) t where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre

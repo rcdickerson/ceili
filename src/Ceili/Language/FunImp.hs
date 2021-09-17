@@ -35,6 +35,7 @@ module Ceili.Language.FunImp
   , ImpStep
   , ImpWhile(..)
   , ImpWhileMetadata(..)
+  , LIAlgebra(..)
   , LoopHeadStates
   , MapImpType(..)
   , Name(..)
@@ -291,8 +292,7 @@ instance Pretty t => Pretty (FunImpProgram t) where
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance ( Num t
-         , Ord t
+instance ( LIAlgebra t
          , SMTString t
          , SMTTypeString t
          , AssertionParseable t
@@ -326,8 +326,7 @@ assignBackward ctx params args post =
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance ( Num t
-         , Ord t
+instance ( LIAlgebra t
          , SMTString t
          , SMTTypeString t
          , AssertionParseable t
