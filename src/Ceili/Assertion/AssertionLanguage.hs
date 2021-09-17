@@ -124,7 +124,7 @@ class ArithAlgebra t where
   arMod  :: t -> t -> t
   arExp  :: t -> t -> t
 
-instance Integral t => ArithAlgebra t where
+instance ArithAlgebra Integer where
   arZero = 0
   arOne  = 1
   arAdd  = (+)
@@ -286,7 +286,7 @@ class AssertionAlgebra t where
   asLte :: t -> t -> Bool
   asGte :: t -> t -> Bool
 
-instance (Ord t, Eq t) => AssertionAlgebra t where
+instance {-# OVERLAPPABLE #-} (Ord t, Eq t) => AssertionAlgebra t where
   asEq  = (==)
   asLt  = (<)
   asGt  = (>)

@@ -112,7 +112,7 @@ class AExpAlgebra t where
   aeExp  :: t -> t -> t
   aeMod  :: t -> t -> t
 
-instance Integral t => AExpAlgebra t where
+instance {-# OVERLAPPABLE #-} AExpAlgebra Integer where
   aeZero = 0
   aeAdd  = (+)
   aeSub  = (-)
