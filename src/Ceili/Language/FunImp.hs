@@ -16,6 +16,7 @@ module Ceili.Language.FunImp
   , CallId
   , CollectLoopHeadStates(..)
   , DefaultFunImpEvalContext(..)
+  , Embeddable(..)
   , Fuel(..)
   , FuelTank(..)
   , FunImpl(..)
@@ -35,7 +36,6 @@ module Ceili.Language.FunImp
   , ImpStep
   , ImpWhile(..)
   , ImpWhileMetadata(..)
-  , LIAlgebra(..)
   , LoopHeadStates
   , MapImpType(..)
   , Name(..)
@@ -57,6 +57,7 @@ module Ceili.Language.FunImp
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
+import Ceili.Embedding
 import Ceili.Evaluation
 import Ceili.Language.AExp
 import Ceili.Language.BExp
@@ -292,7 +293,9 @@ instance Pretty t => Pretty (FunImpProgram t) where
 -- Backward Predicate Transform --
 ----------------------------------
 
-instance ( LIAlgebra t
+instance ( Embeddable Integer t
+         , Eq t
+         , Ord t
          , SMTString t
          , SMTTypeString t
          , AssertionParseable t
@@ -326,7 +329,9 @@ assignBackward ctx params args post =
 -- Forward Predicate Transform --
 ----------------------------------
 
-instance ( LIAlgebra t
+instance ( Embeddable Integer t
+         , Eq t
+         , Ord t
          , SMTString t
          , SMTTypeString t
          , AssertionParseable t

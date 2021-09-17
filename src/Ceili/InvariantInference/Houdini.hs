@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 -- Loop invariance inspired by Houdini.
 -- "Houdini, an annotation assistant for ESC/Java."
 -- Flanagan, Cormac, and K. Rustan M. Leino
@@ -5,7 +7,7 @@
 -- Springer, Berlin, Heidelberg, 2001.
 
 module Ceili.InvariantInference.Houdini
-  ( LIAlgebra(..)
+  ( Embeddable(..)
   , infer
   ) where
 
@@ -19,7 +21,7 @@ import Control.Monad ( filterM )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 
-infer :: (LIAlgebra t, SMTString t, SMTTypeString t)
+infer :: (Embeddable Integer t, Eq t, Ord t, SMTString t, SMTTypeString t)
       => Set Name
       -> Set t
       -> Int
@@ -36,7 +38,7 @@ infer names lits size precond computeSP = do
   log_i $ "[Houdini] Invariant: " ++ (show $ And inductiveClauses)
   return $ And inductiveClauses
 
-findCandidates :: (LIAlgebra t, SMTString t, SMTTypeString t)
+findCandidates :: (Embeddable Integer t, Ord t, Eq t, SMTString t, SMTTypeString t)
                => Set Name
                -> Set t
                -> Int

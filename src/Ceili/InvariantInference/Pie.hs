@@ -9,7 +9,7 @@
 
 module Ceili.InvariantInference.Pie
   ( FeatureVector
-  , LI.LIAlgebra(..)
+  , Embeddable(..)
   , PieEnv(..)
   , createFV
   , getConflict
@@ -19,6 +19,7 @@ module Ceili.InvariantInference.Pie
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
+import Ceili.Embedding
 import qualified Ceili.FeatureLearning.LinearInequalities as LI
 import qualified Ceili.FeatureLearning.PACBoolean as BL
 import qualified Ceili.FeatureLearning.Separator as SL
@@ -72,7 +73,9 @@ plog_d msg = lift $ log_d msg
 -- LoopInvGen --
 ----------------
 
-loopInvGen :: ( LI.LIAlgebra t
+loopInvGen :: ( Embeddable Integer t
+              , Eq t
+              , Ord t
               , SMTString t
               , SMTTypeString t
               , StatePredicate (Assertion t) t
@@ -91,7 +94,9 @@ loopInvGen names literals backwardPT ctx cond body post goodTests = do
   let task = loopInvGen' backwardPT ctx cond body post goodTests
   evalStateT task $ PieEnv names literals
 
-loopInvGen' :: ( LI.LIAlgebra t
+loopInvGen' :: ( Embeddable Integer t
+               , Eq t
+               , Ord t
                , SMTString t
                , SMTTypeString t
                , StatePredicate (Assertion t) t
@@ -130,7 +135,9 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
            plog_i $ "[PIE] Inference complete. Learned invariant: " ++ showSMT weakenedInvar
            return $ Just weakenedInvar
 
-makeInductive :: ( LI.LIAlgebra t
+makeInductive :: ( Embeddable Integer t
+                 , Eq t
+                 , Ord t
                  , SMTString t
                  , SMTTypeString t
                  , StatePredicate (Assertion t) t
@@ -215,7 +222,9 @@ paretoOptimize sufficient assertions =
 -- vPreGen --
 -------------
 
-vPreGen :: ( LI.LIAlgebra t
+vPreGen :: ( Embeddable Integer t
+           , Eq t
+           , Ord t
            , SMTString t
            , SMTTypeString t
            , StatePredicate (Assertion t) t
@@ -262,7 +271,9 @@ extractState assertion = case assertion of
 -- PIE --
 ---------
 
-pie :: ( LI.LIAlgebra t
+pie :: ( Embeddable Integer t
+       , Eq t
+       , Ord t
        , SMTString t
        , SMTTypeString t
        , StatePredicate (Assertion t) t )
@@ -295,7 +306,9 @@ getConflict posFVs negFVs goodTests badTests = do
 findConflict :: Vector FeatureVector -> Vector FeatureVector -> Maybe (Vector Bool)
 findConflict posFVs negFVs = Vector.find (\pos -> isJust $ Vector.find (== pos) negFVs) posFVs
 
-findAugmentingFeature :: ( LI.LIAlgebra t
+findAugmentingFeature :: ( Embeddable Integer t
+                         , Eq t
+                         , Ord t
                          , SMTString t
                          , SMTTypeString t
                          , SMTString s
