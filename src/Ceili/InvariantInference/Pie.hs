@@ -42,11 +42,15 @@ import qualified Data.Vector as Vector
 ---------------------
 type FeatureVector = Vector Bool
 
-createFV :: (StatePredicate (Assertion t) t) =>
-            Vector (Assertion t) -> Vector (ProgState t) -> Vector FeatureVector
-createFV features tests = Vector.generate (Vector.length tests) $ \testIdx ->
-                          Vector.generate (Vector.length features) $ \featureIdx ->
-                          testState (features!featureIdx) (tests!testIdx)
+createFV :: StatePredicate (Assertion t) t
+         => Vector (Assertion t)
+         -> Vector (ProgState t)
+         -> Ceili (Vector FeatureVector)
+createFV features tests =
+  let fv = Vector.generate (Vector.length tests) $ \testIdx ->
+           Vector.generate (Vector.length features) $ \featureIdx ->
+           testState (features!featureIdx) (tests!testIdx)
+  in sequence $ Vector.map sequence fv
 
 
 -----------------
@@ -277,8 +281,8 @@ pie :: ( Embeddable Integer t
     -> Vector (ProgState t)
     -> PieM t (Maybe (Assertion t))
 pie features goodTests badTests = do
-  let posFV = createFV features goodTests
-  let negFV = createFV features badTests
+  posFV <- lift $ createFV features goodTests
+  negFV <- lift $ createFV features badTests
   case getConflict posFV negFV goodTests badTests of
     Just (xGood, xBad) -> do
       mNewFeature <- findAugmentingFeature (Vector.take 8 xGood) (Vector.take 8 xBad)

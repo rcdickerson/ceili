@@ -21,7 +21,7 @@ findSeparator maxCandidateSize candidatesOfSize goodTests badTests = let
   featureLearn' size = do
     log_d $ "[Separator] Examining candidate separators of size " ++ show size
     let candidates = Set.toList $ candidatesOfSize size
-    let mFeature = firstThatSeparates goodTests badTests candidates
+    mFeature <- firstThatSeparates goodTests badTests candidates
     case mFeature of
       Nothing ->
         if size >= maxCandidateSize
@@ -40,13 +40,15 @@ firstThatSeparates :: StatePredicate p s
                    => [ProgState s]
                    -> [ProgState s]
                    -> [p]
-                   -> Maybe p
+                   -> Ceili (Maybe p)
 firstThatSeparates goodTests badTests assertions =
   case assertions of
-    []   -> Nothing
+    []   -> return Nothing
     a:as -> do
-      if acceptsAll goodTests a && rejectsAll badTests a
-        then Just a
+      accepts <- acceptsAll goodTests a
+      rejects <- rejectsAll badTests a
+      if accepts && rejects
+        then return $ Just a
         else firstThatSeparates goodTests badTests as
 
 logMaxSizeReached :: Int -> Ceili ()

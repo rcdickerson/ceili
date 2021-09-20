@@ -39,7 +39,11 @@ test_createFV = let
                              , Vector.fromList [False, True,  True]
                              , Vector.fromList [False, False, True]
                              ]
-  in assertEqual expected $ createFV assertions states
+  in do
+    result <- runCeili emptyEnv $ createFV assertions states
+    case result of
+      Left err     -> assertFailure err
+      Right actual -> assertEqual expected actual
 
 test_getConflict_noConflicts = let
   posFVs = Vector.fromList [ Vector.fromList [True, True,  False]
