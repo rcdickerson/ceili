@@ -655,7 +655,6 @@ instance ImpBackwardPT c e t => ImpBackwardPT c (ImpIf t e) t where
     return $ A.And [A.Imp cond wpT, A.Imp ncond wpE]
 
 instance ( Embeddable Integer t
-         , Eq t
          , Ord t
          , SMTString t
          , SMTTypeString t
@@ -689,7 +688,6 @@ instance ( Embeddable Integer t
       return $ A.And [inv, loopWP, endWP]
 
 getLoopInvariant :: ( Embeddable Integer t
-                    , Eq t
                     , Ord t
                     , SMTString t
                     , SMTTypeString t
@@ -724,7 +722,6 @@ instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
   impBackwardPT ctx (Inr f) post = impBackwardPT ctx f post
 
 instance ( Embeddable Integer t
-         , Eq t
          , Ord t
          , SMTString t
          , SMTTypeString t
@@ -777,7 +774,6 @@ instance ImpForwardPT c e t => ImpForwardPT c (ImpIf t e) t where
     return $ A.Or [postS1, postS2]
 
 instance ( Embeddable Integer t
-         , Eq t
          , Ord t
          , SMTString t
          , SMTTypeString t
@@ -804,7 +800,6 @@ instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
   impForwardPT ctx (Inr f) pre = impForwardPT ctx f pre
 
 instance ( Embeddable Integer t
-         , Eq t
          , Ord t
          , SMTString t
          , SMTTypeString t

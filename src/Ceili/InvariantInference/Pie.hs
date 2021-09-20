@@ -74,7 +74,6 @@ plog_d msg = lift $ log_d msg
 ----------------
 
 loopInvGen :: ( Embeddable Integer t
-              , Eq t
               , Ord t
               , SMTString t
               , SMTTypeString t
@@ -95,7 +94,6 @@ loopInvGen names literals backwardPT ctx cond body post goodTests = do
   evalStateT task $ PieEnv names literals
 
 loopInvGen' :: ( Embeddable Integer t
-               , Eq t
                , Ord t
                , SMTString t
                , SMTTypeString t
@@ -136,7 +134,6 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
            return $ Just weakenedInvar
 
 makeInductive :: ( Embeddable Integer t
-                 , Eq t
                  , Ord t
                  , SMTString t
                  , SMTTypeString t
@@ -223,7 +220,6 @@ paretoOptimize sufficient assertions =
 -------------
 
 vPreGen :: ( Embeddable Integer t
-           , Eq t
            , Ord t
            , SMTString t
            , SMTTypeString t
@@ -272,7 +268,6 @@ extractState assertion = case assertion of
 ---------
 
 pie :: ( Embeddable Integer t
-       , Eq t
        , Ord t
        , SMTString t
        , SMTTypeString t
@@ -307,7 +302,6 @@ findConflict :: Vector FeatureVector -> Vector FeatureVector -> Maybe (Vector Bo
 findConflict posFVs negFVs = Vector.find (\pos -> isJust $ Vector.find (== pos) negFVs) posFVs
 
 findAugmentingFeature :: ( Embeddable Integer t
-                         , Eq t
                          , Ord t
                          , SMTString t
                          , SMTTypeString t

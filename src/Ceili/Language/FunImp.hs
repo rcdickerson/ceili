@@ -294,7 +294,6 @@ instance Pretty t => Pretty (FunImpProgram t) where
 ----------------------------------
 
 instance ( Embeddable Integer t
-         , Eq t
          , Ord t
          , SMTString t
          , SMTTypeString t
@@ -330,7 +329,6 @@ assignBackward ctx params args post =
 ----------------------------------
 
 instance ( Embeddable Integer t
-         , Eq t
          , Ord t
          , SMTString t
          , SMTTypeString t
