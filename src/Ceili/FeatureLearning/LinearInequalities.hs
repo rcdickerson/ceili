@@ -22,8 +22,7 @@ import qualified Data.Set as Set
 --   `name` will appear at most once.
 -- + If `size` is larger than the set of available names, it is implicity
 --   reduced to the largest value the given set of names accomodates.
-linearInequalities :: ( Eq t
-                      , Ord t
+linearInequalities :: ( Ord t
                       , Embeddable Integer t )
                    => Set Name -> Set t -> Int -> Set (Assertion t)
 linearInequalities names lits size = let
@@ -36,8 +35,7 @@ linearInequalities names lits size = let
   varGroups   = Collection.subsetsOfSize size' varNames
   in Set.unions $ Set.map (constructLCs arithLits) varGroups
 
-constructLCs :: ( Eq t
-                , Ord t
+constructLCs :: ( Ord t
                 , Embeddable Integer t )
              => Set (Arith t) -> Set (Arith t) -> Set (Assertion t)
 constructLCs lits vars = let
