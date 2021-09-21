@@ -49,6 +49,7 @@ module Ceili.Language.FunImp
   , impWhile
   , impWhileWithMeta
   , inject
+  , mapLoopHeadStates
   , populateLoopIds
   , prettyArgs
   , prettyAssignees

@@ -286,7 +286,7 @@ class AssertionAlgebra t where
   asLte :: t -> t -> Bool
   asGte :: t -> t -> Bool
 
-instance {-# OVERLAPPABLE #-} (Ord t, Eq t) => AssertionAlgebra t where
+instance AssertionAlgebra Integer where
   asEq  = (==)
   asLt  = (<)
   asGt  = (>)
@@ -301,7 +301,7 @@ instance (ArithAlgebra t, AssertionAlgebra t) => Evaluable c t (Assertion t) Boo
    Not a     -> not $ eval ctx state a
    And as    -> and $ map (eval ctx state) as
    Or  as    -> or  $ map (eval ctx state) as
-   Imp a1 a2 -> not   (eval ctx state a1) || eval ctx state a2
+   Imp a1 a2 -> (not $ eval ctx state a1) || (eval ctx state a2)
    Eq  a1 a2 -> asEq  (evalArith state a1) (evalArith state a2)
    Lt  a1 a2 -> asLt  (evalArith state a1) (evalArith state a2)
    Gt  a1 a2 -> asGt  (evalArith state a1) (evalArith state a2)

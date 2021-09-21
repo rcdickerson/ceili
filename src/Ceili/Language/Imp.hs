@@ -45,6 +45,7 @@ module Ceili.Language.Imp
   , impWhile
   , impWhileWithMeta
   , inject
+  , mapLoopHeadStates
   , populateLoopIds
   , repopulateLoopIds
   , unionIterStates
@@ -454,6 +455,9 @@ instance ( FuelTank c
 
 type LoopHeadStates t = Map UUID (IterStateMap t)
 type IterStateMap t   = Map Int (Set (ProgState t))
+
+mapLoopHeadStates :: Ord b => (a -> b) -> LoopHeadStates a -> LoopHeadStates b
+mapLoopHeadStates = Map.map . Map.map . Set.map . Map.map
 
 class CollectLoopHeadStates ctx expr t where
   collectLoopHeadStates :: ctx -> [ProgState t] -> expr -> Ceili (LoopHeadStates t)
