@@ -296,9 +296,9 @@ instance Pretty t => Pretty (FunImpProgram t) where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , SMTQueryable t
          , AssertionParseable t
+         , Pretty t
          , FunImplLookup c (FunImpProgram t)
          , StatePredicate (Assertion t) t
          , ImpPieContextProvider c t
@@ -331,8 +331,8 @@ assignBackward ctx params args post =
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , SMTQueryable t
+         , Pretty t
          , AssertionParseable t
          , FunImplLookup c (FunImpProgram t)
          , CollectableNames (FunImpProgram t)

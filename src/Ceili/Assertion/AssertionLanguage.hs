@@ -25,7 +25,7 @@ import Ceili.Evaluation
 import Ceili.Literal
 import Ceili.Name
 import Ceili.ProgState
-import Ceili.SMTString ( SMTString(..), SMTTypeString(..) )
+import Ceili.SMTString
 import Data.ByteString ( ByteString )
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.Map as Map
@@ -48,8 +48,8 @@ data Arith t = Num t
              | Pow (Arith t) (Arith t)
            deriving (Eq, Ord, Functor)
 
-instance SMTString t => Show (Arith t) where
-  show = S8.unpack . toSMT
+instance Pretty t => Show (Arith t) where
+  show = show . pretty
 
 toSexp :: SMTString a => ByteString -> [a] -> ByteString
 toSexp name as = "(" <> name <> " "<> (S8.intercalate " " $ map toSMT as) <> ")"
@@ -174,8 +174,8 @@ data Assertion t = ATrue
                  | Exists   [Name] (Assertion t)
                deriving (Eq, Ord, Functor)
 
-instance (SMTString t, SMTTypeString t) => Show (Assertion t) where
-  show = S8.unpack . toSMT
+instance Pretty t => Show (Assertion t) where
+  show = show . pretty
 
 instance MappableNames (Assertion t) where
   mapNames f assertion = case assertion of
@@ -394,8 +394,35 @@ instance FreeVariables (Assertion t) where
 -- Pretty Printer --
 --------------------
 
-instance SMTString t => Pretty (Arith t) where
-  pretty = pretty . S8.unpack . toSMT
+instance Pretty t => Pretty (Arith t) where
+  pretty arith = case arith of
+    Num n     -> pretty n
+    Var name  -> pretty name
+    Add as    -> toSexp "+"   as
+    Sub as    -> toSexp "-"   as
+    Mul as    -> toSexp "*"   as
+    Div a1 a2 -> toSexp "/"   [a1, a2]
+    Mod a1 a2 -> toSexp "mod" [a1, a2]
+    Pow a1 a2 -> toSexp "^"   [a1, a2]
+    where
+      toSexp name a = "(" <> name <> " " <> pretty a <> ")"
 
-instance (SMTString t, SMTTypeString t) => Pretty (Assertion t) where
-  pretty = pretty . S8.unpack . toSMT
+instance Pretty t => Pretty (Assertion t) where
+  pretty assertion = case assertion of
+    ATrue         -> "true"
+    AFalse        -> "false"
+    Atom name     -> pretty name
+    Not a         -> toSexp "not" a
+    And as        -> toSexp "and" as
+    Or as         -> toSexp "or" as
+    Imp a1 a2     -> toSexp "=>" [a1, a2]
+    Eq a1 a2      -> toSexp "="  [a1, a2]
+    Lt a1 a2      -> toSexp "<"  [a1, a2]
+    Gt a1 a2      -> toSexp ">"  [a1, a2]
+    Lte a1 a2     -> toSexp "<=" [a1, a2]
+    Gte a1 a2     -> toSexp ">=" [a1, a2]
+    Forall vars a -> quantToSexp "forall" vars a
+    Exists vars a -> quantToSexp "exists" vars a
+    where
+      toSexp name a = "(" <> name <> " " <> pretty a <> ")"
+      quantToSexp name vs a = "(" <> name <> " " <> pretty vs <> " " <> pretty a <> ")"

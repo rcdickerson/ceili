@@ -26,7 +26,6 @@ import qualified Ceili.FeatureLearning.Separator as SL
 import Ceili.PTS ( BackwardPT )
 import Ceili.ProgState
 import qualified Ceili.SMT as SMT
-import Ceili.SMTString
 import Ceili.StatePredicate
 import Control.Monad.Trans ( lift )
 import Control.Monad.Trans.State ( StateT, evalStateT, get )
@@ -35,6 +34,7 @@ import Data.Set ( Set )
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
+import Prettyprinter
 
 
 ---------------------
@@ -78,9 +78,9 @@ plog_d msg = lift $ log_d msg
 ----------------
 
 loopInvGen :: ( Embeddable Integer t
+              , SMTQueryable t
               , Ord t
-              , SMTString t
-              , SMTTypeString t
+              , Pretty t
               , StatePredicate (Assertion t) t
               , AssertionParseable t )
            => Set Name
@@ -98,9 +98,9 @@ loopInvGen names literals backwardPT ctx cond body post goodTests = do
   evalStateT task $ PieEnv names literals
 
 loopInvGen' :: ( Embeddable Integer t
+               , SMTQueryable t
                , Ord t
-               , SMTString t
-               , SMTTypeString t
+               , Pretty t
                , StatePredicate (Assertion t) t
                , AssertionParseable t )
             => BackwardPT c p t
@@ -115,7 +115,7 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
   mInvar <- vPreGen (Imp (Not cond) post)
                     (Vector.fromList goodTests)
                     Vector.empty
-  lift . log_i $ "[PIE] LoopInvGen initial invariant: " ++ (showSMT mInvar)
+  lift . log_i $ "[PIE] LoopInvGen initial invariant: " ++ (show . pretty) mInvar
   case mInvar of
     Nothing -> do
       plog_i "[PIE] Unable to find initial candidate invariant (an I s.t. I /\\ ~c => Post)"
@@ -127,20 +127,20 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
            plog_i "[PIE] LoopInvGen unable to find inductive strengthening"
            return Nothing -- TODO: Not this.
          Just invar' -> do
-           plog_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ showSMT mInvar'
+           plog_i $ "[PIE] LoopInvGen strengthened (inductive) invariant: " ++ (show . pretty) mInvar'
            plog_i $ "[PIE] Attempting to weaken invariant..."
            let validInvar inv = lift $ do
                  wp <- backwardPT ctx body inv
                  checkValidB $ And [ Imp (And [Not cond, inv]) post
-                                  , Imp (And [cond, inv]) wp ]
+                                , Imp (And [cond, inv]) wp ]
            weakenedInvar <- weaken validInvar invar'
-           plog_i $ "[PIE] Inference complete. Learned invariant: " ++ showSMT weakenedInvar
+           plog_i $ "[PIE] Inference complete. Learned invariant: " ++ (show . pretty) weakenedInvar
            return $ Just weakenedInvar
 
 makeInductive :: ( Embeddable Integer t
+                 , SMTQueryable t
                  , Ord t
-                 , SMTString t
-                 , SMTTypeString t
+                 , Pretty t
                  , StatePredicate (Assertion t) t
                  , AssertionParseable t )
               => BackwardPT c p t
@@ -151,7 +151,7 @@ makeInductive :: ( Embeddable Integer t
               -> [ProgState t]
               -> PieM t (Maybe (Assertion t))
 makeInductive backwardPT ctx cond body invar goodTests = do
-  plog_d $ "[PIE] Checking inductivity of candidate invariant: " ++ showSMT invar
+  plog_d $ "[PIE] Checking inductivity of candidate invariant: " ++ (show . pretty) invar
   wp <- lift $ backwardPT ctx body invar
   let query = Imp (And [invar, cond]) wp
   response <- lift $ checkValid query
@@ -161,7 +161,7 @@ makeInductive backwardPT ctx cond body invar goodTests = do
     SMT.ValidUnknown -> do
       plog_e $ "[PIE] SMT solver returned unknown when checking inductivity. "
                ++ "Treating candidate as non-inductive. Inductivity SMT query: "
-               ++ showSMT query
+               ++ show query
       return Nothing
   case mInvar of
     Just _  -> do
@@ -174,10 +174,10 @@ makeInductive backwardPT ctx cond body invar goodTests = do
       mInvar' <- vPreGen goal (Vector.fromList goodTests) Vector.empty
       case mInvar' of
         Nothing -> do
-          plog_d $ "[PIE] Unable to find inductive strengthening of " ++ showSMT invar
+          plog_d $ "[PIE] Unable to find inductive strengthening of " ++ show invar
           return Nothing
         Just invar' -> do
-          plog_d $ "[PIE] Found strengthening candidate clause: " ++ showSMT invar'
+          plog_d $ "[PIE] Found strengthening candidate clause: " ++ show invar'
           makeInductive backwardPT ctx cond body (conj invar invar') goodTests
 
 -- |A conjoin that avoids extraneous "and" nesting.
@@ -225,8 +225,8 @@ paretoOptimize sufficient assertions =
 
 vPreGen :: ( Embeddable Integer t
            , Ord t
-           , SMTString t
-           , SMTTypeString t
+           , Pretty t
+           , SMTQueryable t
            , StatePredicate (Assertion t) t
            , AssertionParseable t )
         => (Assertion t)
@@ -235,25 +235,25 @@ vPreGen :: ( Embeddable Integer t
         -> PieM t (Maybe (Assertion t))
 vPreGen goal goodTests badTests = do
   plog_d $ "[PIE] Starting vPreGen pass"
-  plog_d $ "[PIE]   goal: "       ++ showSMT goal
-  plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map prettySMTState goodTests)
-  plog_d $ "[PIE]   bad tests: "  ++ (show $ Vector.map prettySMTState badTests)
+  plog_d $ "[PIE]   goal: "       ++ (show . pretty) goal
+  plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
+  plog_d $ "[PIE]   bad tests: "  ++ (show $ Vector.map (show . pretty) badTests)
   mCandidate <- pie Vector.empty goodTests badTests
   case mCandidate of
     Nothing -> return Nothing
     Just candidate -> do
-      plog_d $ "[PIE] vPreGen candidate precondition: " ++ showSMT candidate
-      mCounter <- lift $ findCounterexample $ Imp candidate goal
+      plog_d $ "[PIE] vPreGen candidate precondition: " ++ (show . pretty) candidate
+      mCounter <- lift . findCounterexample $ Imp candidate goal
       case mCounter of
         Nothing -> do
-          plog_d $ "[PIE] vPreGen found satisfactory precondition: " ++ showSMT candidate
+          plog_d $ "[PIE] vPreGen found satisfactory precondition: " ++ show candidate
           return $ Just candidate
         Just counter -> do
-          plog_d $ "[PIE] vPreGen found counterexample: " ++ showSMT counter
+          plog_d $ "[PIE] vPreGen found counterexample: " ++ show counter
           vPreGen goal goodTests $ Vector.cons (extractState counter) badTests
 
 -- TODO: This is fragile.
-extractState :: (SMTString t, SMTTypeString t) => (Assertion t) -> (ProgState t)
+extractState :: Pretty t => (Assertion t) -> (ProgState t)
 extractState assertion = case assertion of
   Eq lhs rhs -> Map.fromList [(extractName lhs, extractInt rhs)]
   And as     -> Map.unions $ map extractState as
@@ -273,8 +273,7 @@ extractState assertion = case assertion of
 
 pie :: ( Embeddable Integer t
        , Ord t
-       , SMTString t
-       , SMTTypeString t
+       , Pretty t
        , StatePredicate (Assertion t) t )
     => Vector (Assertion t)
     -> Vector (ProgState t)
@@ -307,9 +306,8 @@ findConflict posFVs negFVs = Vector.find (\pos -> isJust $ Vector.find (== pos) 
 
 findAugmentingFeature :: ( Embeddable Integer t
                          , Ord t
-                         , SMTString t
-                         , SMTTypeString t
-                         , SMTString s
+                         , Pretty s
+                         , Pretty t
                          , StatePredicate (Assertion t) s )
                       => Vector (ProgState s)
                       -> Vector (ProgState s)

@@ -2,6 +2,7 @@ module Ceili.CeiliEnv
   ( Env(..)
   , Ceili
   , LogLevel(..)
+  , SMT.SMTQueryable(..)
   , checkSat
   , checkSatB
   , checkSatWithLog
@@ -23,7 +24,6 @@ module Ceili.CeiliEnv
 import Ceili.Assertion ( Assertion(..), AssertionParseable, parseAssertion )
 import Ceili.Name
 import qualified Ceili.SMT as SMT
-import Ceili.SMTString
 import Control.Concurrent.Timeout ( timeout )
 import Control.Monad.IO.Class ( liftIO )
 import Control.Monad.Except ( ExceptT, runExceptT, throwError )
@@ -107,11 +107,11 @@ withTimeout t = do
   timeoutMs <- get >>= return . env_smtTimeoutMs
   liftIO $ timeout (1000 * timeoutMs) t
 
-checkValid :: (SMTString t, SMTTypeString t)
+checkValid :: SMT.SMTQueryable t
            => Assertion t -> Ceili SMT.ValidResult
 checkValid = checkValidWithLog LogLevelDebug
 
-checkValidB :: (SMTString t, SMTTypeString t)
+checkValidB :: SMT.SMTQueryable t
             => Assertion t -> Ceili Bool
 checkValidB assertion = do
   valid <- checkValid assertion
@@ -120,7 +120,7 @@ checkValidB assertion = do
     SMT.Invalid _    -> return False
     SMT.ValidUnknown -> return False
 
-checkValidWithLog :: (SMTString t, SMTTypeString t)
+checkValidWithLog :: SMT.SMTQueryable t
                   => LogLevel -> Assertion t -> Ceili SMT.ValidResult
 checkValidWithLog level assertion = do
   result  <- runWithLog level $ (\logger -> SMT.checkValidFL logger assertion)
@@ -128,11 +128,11 @@ checkValidWithLog level assertion = do
     Nothing -> do log_e "SMT timeout"; return SMT.ValidUnknown
     Just r  -> return r
 
-checkSat :: (SMTString t, SMTTypeString t)
+checkSat :: SMT.SMTQueryable t
          => Assertion t -> Ceili SMT.SatResult
 checkSat = checkSatWithLog LogLevelDebug
 
-checkSatB :: (SMTString t, SMTTypeString t)
+checkSatB :: SMT.SMTQueryable t
           => Assertion t -> Ceili Bool
 checkSatB assertion = do
   sat <- checkSat assertion
@@ -141,7 +141,7 @@ checkSatB assertion = do
     SMT.Unsat      -> return False
     SMT.SatUnknown -> return False
 
-checkSatWithLog :: (SMTString t, SMTTypeString t)
+checkSatWithLog :: SMT.SMTQueryable t
                 => LogLevel -> Assertion t -> Ceili SMT.SatResult
 checkSatWithLog level assertion = do
   result <- runWithLog level $ (\logger -> SMT.checkSatFL logger assertion)
@@ -156,7 +156,7 @@ runWithLog level task = do
     withFastLogger logType $ \logger ->
     task logger
 
-findCounterexample :: (AssertionParseable t, SMTString t, SMTTypeString t)
+findCounterexample :: (SMT.SMTQueryable t, AssertionParseable t)
                    => Assertion t -> Ceili (Maybe (Assertion t))
 findCounterexample assertion = do
   logType <- logTypeAt LogLevelDebug

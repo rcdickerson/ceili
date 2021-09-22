@@ -660,8 +660,8 @@ instance ImpBackwardPT c e t => ImpBackwardPT c (ImpIf t e) t where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , SMTQueryable t
+         , Pretty t
          , AssertionParseable t
          , CollectableNames e
          , StatePredicate (Assertion t) t
@@ -692,9 +692,9 @@ instance ( Embeddable Integer t
       return $ A.And [inv, loopWP, endWP]
 
 getLoopInvariant :: ( Embeddable Integer t
+                    , SMTQueryable t
                     , Ord t
-                    , SMTString t
-                    , SMTTypeString t
+                    , Pretty t
                     , AssertionParseable t
                     , StatePredicate (Assertion t) t
                     , ImpPieContextProvider ctx t
@@ -726,13 +726,13 @@ instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
   impBackwardPT ctx (Inr f) post = impBackwardPT ctx f post
 
 instance ( Embeddable Integer t
+         , SMTQueryable t
+         , Pretty t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
          , AssertionParseable t
          , StatePredicate (Assertion t) t
-         , ImpPieContextProvider c t)
-         => ImpBackwardPT c (ImpProgram t) t where
+         , ImpPieContextProvider c t
+         ) => ImpBackwardPT c (ImpProgram t) t where
   impBackwardPT ctx (In f) post = impBackwardPT ctx f post
 
 
@@ -779,8 +779,8 @@ instance ImpForwardPT c e t => ImpForwardPT c (ImpIf t e) t where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , SMTQueryable t
+         , Pretty t
          , CollectableNames e
          , ImpForwardPT c e t )
         => ImpForwardPT c (ImpWhile t e) t where
@@ -796,7 +796,7 @@ instance ( Embeddable Integer t
       then do log_d "Loop invariant verification conditions passed."
               return $ A.And [A.Not cond, inv]
       else throwError
-           $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
+           $ "Loop failed verification conditions. Invariant: " ++ show inv
 
 instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
          ImpForwardPT c ((f :+: g) e) t where
@@ -805,7 +805,7 @@ instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , SMTQueryable t
+         , Pretty t
          ) => ImpForwardPT c (ImpProgram t) t where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre
