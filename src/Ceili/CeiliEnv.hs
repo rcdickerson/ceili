@@ -109,7 +109,7 @@ withTimeout t = do
 
 checkValid :: SMT.SMTQueryable t
            => Assertion t -> Ceili SMT.ValidResult
-checkValid = checkValidWithLog LogLevelDebug
+checkValid = checkValidWithLog LogLevelNone
 
 checkValidB :: SMT.SMTQueryable t
             => Assertion t -> Ceili Bool

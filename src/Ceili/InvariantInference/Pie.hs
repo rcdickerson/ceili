@@ -280,6 +280,7 @@ pie :: ( Embeddable Integer t
     -> Vector (ProgState t)
     -> PieM t (Maybe (Assertion t))
 pie features goodTests badTests = do
+  lift $ log_d $ "[PIE] Beginning PIE pass with features: " ++ show features
   posFV <- lift $ createFV features goodTests
   negFV <- lift $ createFV features badTests
   case getConflict posFV negFV goodTests badTests of
