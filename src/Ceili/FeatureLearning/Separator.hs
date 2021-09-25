@@ -33,8 +33,8 @@ findSeparator maxCandidateSize candidatesOfSize goodTests badTests = let
         return $ Just feature
   in do
     log_d   "[Separator] Beginning separator search"
-    log_d $ "[Separator]   Good tests: " ++ (show $ map (show . pretty) goodTests)
-    log_d $ "[Separator]   Bad tests: "  ++ (show $ map (show . pretty) badTests)
+    log_d . show $ pretty "[Separator] Good tests: " <+> (align . prettyProgStates $ goodTests)
+    log_d . show $ pretty "[Separator] Bad tests: " <+> (align . prettyProgStates $ badTests)
     featureLearn' 1
 
 firstThatSeparates :: StatePredicate p s

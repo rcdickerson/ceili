@@ -51,8 +51,8 @@ data Arith t = Num t
 instance Pretty t => Show (Arith t) where
   show = show . pretty
 
-toSexp :: SMTString a => ByteString -> [a] -> ByteString
-toSexp name as = "(" <> name <> " "<> (S8.intercalate " " $ map toSMT as) <> ")"
+bsToSexp :: SMTString a => ByteString -> [a] -> ByteString
+bsToSexp name as = "(" <> name <> " "<> (S8.intercalate " " $ map toSMT as) <> ")"
 
 instance MappableNames (Arith t) where
   mapNames f arith = case arith of
@@ -102,12 +102,12 @@ instance SMTString t => SMTString (Arith t) where
   toSMT arith = case arith of
     Num n     -> toSMT n
     Var name  -> toSMT name
-    Add as    -> toSexp "+"   as
-    Sub as    -> toSexp "-"   as
-    Mul as    -> toSexp "*"   as
-    Div a1 a2 -> toSexp "/"   [a1, a2]
-    Mod a1 a2 -> toSexp "mod" [a1, a2]
-    Pow a1 a2 -> toSexp "^"   [a1, a2]
+    Add as    -> bsToSexp "+"   as
+    Sub as    -> bsToSexp "-"   as
+    Mul as    -> bsToSexp "*"   as
+    Div a1 a2 -> bsToSexp "/"   [a1, a2]
+    Mod a1 a2 -> bsToSexp "mod" [a1, a2]
+    Pow a1 a2 -> bsToSexp "^"   [a1, a2]
 
 
 ----------------------
@@ -255,15 +255,15 @@ instance (SMTString t, SMTTypeString t) => SMTString (Assertion t) where
     ATrue         -> "true"
     AFalse        -> "false"
     Atom name     -> toSMT name
-    Not a         -> toSexp "not" [a]
-    And as        -> toSexp "and" as
-    Or as         -> toSexp "or" as
-    Imp a1 a2     -> toSexp "=>" [a1, a2]
-    Eq a1 a2      -> toSexp "="  [a1, a2]
-    Lt a1 a2      -> toSexp "<"  [a1, a2]
-    Gt a1 a2      -> toSexp ">"  [a1, a2]
-    Lte a1 a2     -> toSexp "<=" [a1, a2]
-    Gte a1 a2     -> toSexp ">=" [a1, a2]
+    Not a         -> bsToSexp "not" [a]
+    And as        -> bsToSexp "and" as
+    Or as         -> bsToSexp "or" as
+    Imp a1 a2     -> bsToSexp "=>" [a1, a2]
+    Eq a1 a2      -> bsToSexp "="  [a1, a2]
+    Lt a1 a2      -> bsToSexp "<"  [a1, a2]
+    Gt a1 a2      -> bsToSexp ">"  [a1, a2]
+    Lte a1 a2     -> bsToSexp "<=" [a1, a2]
+    Gte a1 a2     -> bsToSexp ">=" [a1, a2]
     Forall vars a -> quantToSMT "forall" vars a
     Exists vars a -> quantToSMT "exists" vars a
     where
@@ -394,6 +394,12 @@ instance FreeVariables (Assertion t) where
 -- Pretty Printer --
 --------------------
 
+toSexp :: Pretty a => Doc ann -> [a] -> Doc ann
+toSexp name as = sexpEnclose $ name:(map pretty as)
+
+sexpEnclose :: [Doc ann] -> Doc ann
+sexpEnclose = encloseSep lparen rparen space
+
 instance Pretty t => Pretty (Arith t) where
   pretty arith = case arith of
     Num n     -> pretty n
@@ -404,15 +410,14 @@ instance Pretty t => Pretty (Arith t) where
     Div a1 a2 -> toSexp "/"   [a1, a2]
     Mod a1 a2 -> toSexp "mod" [a1, a2]
     Pow a1 a2 -> toSexp "^"   [a1, a2]
-    where
-      toSexp name a = "(" <> name <> " " <> pretty a <> ")"
+
 
 instance Pretty t => Pretty (Assertion t) where
   pretty assertion = case assertion of
     ATrue         -> "true"
     AFalse        -> "false"
     Atom name     -> pretty name
-    Not a         -> toSexp "not" a
+    Not a         -> toSexp "not" [a]
     And as        -> toSexp "and" as
     Or as         -> toSexp "or" as
     Imp a1 a2     -> toSexp "=>" [a1, a2]
@@ -424,5 +429,6 @@ instance Pretty t => Pretty (Assertion t) where
     Forall vars a -> quantToSexp "forall" vars a
     Exists vars a -> quantToSexp "exists" vars a
     where
-      toSexp name a = "(" <> name <> " " <> pretty a <> ")"
-      quantToSexp name vs a = "(" <> name <> " " <> pretty vs <> " " <> pretty a <> ")"
+      quantToSexp name vs a = sexpEnclose $ [ name
+                                            , sexpEnclose $ map pretty vs
+                                            , pretty a ]

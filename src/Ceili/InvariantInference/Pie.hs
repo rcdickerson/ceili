@@ -235,9 +235,9 @@ vPreGen :: ( Embeddable Integer t
         -> PieM t (Maybe (Assertion t))
 vPreGen goal goodTests badTests = do
   plog_d $ "[PIE] Starting vPreGen pass"
-  plog_d $ "[PIE]   goal: "       ++ (show . pretty) goal
-  plog_d $ "[PIE]   good tests: " ++ (show $ Vector.map (show . pretty) goodTests)
-  plog_d $ "[PIE]   bad tests: "  ++ (show $ Vector.map (show . pretty) badTests)
+  plog_d . show $ pretty "[PIE] goal: " <+> pretty goal
+  plog_d . show $ pretty "[PIE] good tests: " <+> (align . prettyProgStates . Vector.toList) goodTests
+  plog_d . show $ pretty "[PIE] bad tests: "  <+> (align . prettyProgStates . Vector.toList) badTests
   mCandidate <- pie Vector.empty goodTests badTests
   case mCandidate of
     Nothing -> return Nothing

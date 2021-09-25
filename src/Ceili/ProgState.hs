@@ -5,11 +5,11 @@
 module Ceili.ProgState
   ( ProgState
   , pretty
-  , prettySMTState
+  , prettyProgState
+  , prettyProgStates
   ) where
 
 import Ceili.Name
-import Ceili.SMTString
 import Data.Map ( Map )
 import qualified Data.Map as Map
 import Prettyprinter
@@ -29,10 +29,12 @@ instance FreshableNames (ProgState a) where
     return $ Map.fromList assocs'
 
 instance Pretty a => Pretty (ProgState a) where
-  pretty st = braces . hsep . (punctuate comma) $ map prettyAssoc assocList
-    where
-      assocList = Map.toList st
-      prettyAssoc (k, v) = pretty k <+> "->" <+> pretty v
+  pretty = prettyProgState
 
-prettySMTState :: SMTString a => ProgState a -> String
-prettySMTState state = show . pretty $ Map.map showSMT state
+prettyProgState :: Pretty t => ProgState t -> Doc ann
+prettyProgState st = group . encloseSep (flatAlt "{ " "{") (flatAlt " }" "}") ", "
+                   $ map prettyAssoc (Map.toList st)
+  where prettyAssoc (k, v) = pretty k <+> "->" <+> pretty v
+
+prettyProgStates :: Pretty t => [ProgState t] -> Doc ann
+prettyProgStates states = list $ map (align . prettyProgState) states
