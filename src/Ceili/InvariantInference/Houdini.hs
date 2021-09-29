@@ -22,7 +22,7 @@ import qualified Data.Set as Set
 import Prettyprinter
 
 infer :: ( Embeddable Integer t
-         , SMTQueryable t
+         , SMT.ValidCheckable t
          , Pretty t
          , Eq t
          , Ord t
@@ -44,7 +44,7 @@ infer names lits size precond computeSP = do
   return $ And inductiveClauses
 
 findCandidates :: ( Embeddable Integer t
-                  , SMTQueryable t
+                  , SMT.ValidCheckable t
                   , Ord t
                   , Eq t)
                => Set Name
@@ -57,7 +57,7 @@ findCandidates names lits size precond = do
   log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)
   filterM (checkValidB . Imp precond) $ Set.toList candidates
 
-houdini :: SMTQueryable t
+houdini :: SMT.ValidCheckable t
         => [Assertion t]
         -> (Assertion t -> Ceili (Assertion t))
         -> Ceili [Assertion t]

@@ -1,8 +1,9 @@
 module Ceili.CeiliEnv
-  ( Env(..)
-  , Ceili
+  ( Ceili
+  , Env(..)
   , LogLevel(..)
-  , SMT.SMTQueryable(..)
+  , SMT.SatCheckable
+  , SMT.ValidCheckable
   , checkSat
   , checkSatB
   , checkSatWithLog
@@ -16,6 +17,7 @@ module Ceili.CeiliEnv
   , log_d
   , log_e
   , log_i
+  , log_s
   , mkEnv
   , runCeili
   , throwError
@@ -32,13 +34,15 @@ import Data.Set ( Set )
 import qualified Data.Set as Set
 import System.Log.FastLogger
 
-data Env = Env { env_logger_debug :: LogType
+data Env = Env { env_logger_smt   :: LogType
+               , env_logger_debug :: LogType
                , env_logger_error :: LogType
                , env_logger_info  :: LogType
                , env_nextFreshIds :: NextFreshIds
                , env_smtTimeoutMs :: Integer }
 
-data LogLevel = LogLevelDebug
+data LogLevel = LogLevelSMT
+              | LogLevelDebug
               | LogLevelInfo
               | LogLevelError
               | LogLevelNone
@@ -50,7 +54,8 @@ runCeili env task = runExceptT (evalStateT task env)
 
 mkEnv :: LogLevel -> Integer -> Set Name -> Env
 mkEnv minLogLevel smtTimeoutMs names =
-  Env { env_logger_debug = mkDebugLogType minLogLevel
+  Env { env_logger_smt   = mkSmtLogType minLogLevel
+      , env_logger_debug = mkDebugLogType minLogLevel
       , env_logger_info  = mkInfoLogType minLogLevel
       , env_logger_error = mkErrorLogType minLogLevel
       , env_nextFreshIds = buildFreshIds names
@@ -62,19 +67,27 @@ defaultEnv = mkEnv LogLevelInfo 2000
 emptyEnv :: Env
 emptyEnv = defaultEnv Set.empty
 
+mkSmtLogType :: LogLevel -> LogType
+mkSmtLogType minLevel = case minLevel of
+  LogLevelSMT -> LogStdout defaultBufSize
+  _ -> LogNone
+
 mkDebugLogType :: LogLevel -> LogType
 mkDebugLogType minLevel = case minLevel of
+  LogLevelSMT   -> LogStdout defaultBufSize
   LogLevelDebug -> LogStdout defaultBufSize
   _ -> LogNone
 
 mkInfoLogType :: LogLevel -> LogType
 mkInfoLogType minLevel = case minLevel of
+  LogLevelSMT   -> LogStdout defaultBufSize
   LogLevelDebug -> LogStdout defaultBufSize
   LogLevelInfo  -> LogStdout defaultBufSize
   _ -> LogNone
 
 mkErrorLogType :: LogLevel -> LogType
 mkErrorLogType minLevel = case minLevel of
+  LogLevelSMT   -> LogStdout defaultBufSize
   LogLevelDebug -> LogStderr defaultBufSize
   LogLevelInfo  -> LogStderr defaultBufSize
   LogLevelError -> LogStderr defaultBufSize
@@ -85,6 +98,9 @@ logAt logger message = do
   let messageLS = (toLogStr message) <> toLogStr "\n"
   logType <- get >>= return . logger
   liftIO $ withFastLogger logType ($ messageLS)
+
+log_s :: ToLogStr m => m -> Ceili ()
+log_s = logAt env_logger_smt
 
 log_d :: ToLogStr m => m -> Ceili ()
 log_d = logAt env_logger_debug
@@ -98,6 +114,7 @@ log_e = logAt env_logger_error
 logTypeAt :: LogLevel -> Ceili LogType
 logTypeAt level = case level of
   LogLevelNone  -> return LogNone
+  LogLevelSMT   -> get >>= return . env_logger_smt
   LogLevelDebug -> get >>= return . env_logger_debug
   LogLevelError -> get >>= return . env_logger_error
   LogLevelInfo  -> get >>= return . env_logger_info
@@ -107,12 +124,10 @@ withTimeout t = do
   timeoutMs <- get >>= return . env_smtTimeoutMs
   liftIO $ timeout (1000 * timeoutMs) t
 
-checkValid :: SMT.SMTQueryable t
-           => Assertion t -> Ceili SMT.ValidResult
-checkValid = checkValidWithLog LogLevelNone
+checkValid :: SMT.ValidCheckable t => Assertion t -> Ceili SMT.ValidResult
+checkValid = checkValidWithLog LogLevelSMT
 
-checkValidB :: SMT.SMTQueryable t
-            => Assertion t -> Ceili Bool
+checkValidB :: SMT.ValidCheckable t => Assertion t -> Ceili Bool
 checkValidB assertion = do
   valid <- checkValid assertion
   case valid of
@@ -120,20 +135,24 @@ checkValidB assertion = do
     SMT.Invalid _    -> return False
     SMT.ValidUnknown -> return False
 
-checkValidWithLog :: SMT.SMTQueryable t
-                  => LogLevel -> Assertion t -> Ceili SMT.ValidResult
+checkValidWithLog :: SMT.ValidCheckable t
+                  => LogLevel
+                  -> Assertion t
+                  -> Ceili SMT.ValidResult
 checkValidWithLog level assertion = do
   result  <- runWithLog level $ (\logger -> SMT.checkValidFL logger assertion)
   case result of
     Nothing -> do log_e "SMT timeout"; return SMT.ValidUnknown
     Just r  -> return r
 
-checkSat :: SMT.SMTQueryable t
-         => Assertion t -> Ceili SMT.SatResult
-checkSat = checkSatWithLog LogLevelDebug
+checkSat :: SMT.SatCheckable t
+         => Assertion t
+         -> Ceili SMT.SatResult
+checkSat = checkSatWithLog LogLevelSMT
 
-checkSatB :: SMT.SMTQueryable t
-          => Assertion t -> Ceili Bool
+checkSatB :: SMT.SatCheckable t
+          => Assertion t
+          -> Ceili Bool
 checkSatB assertion = do
   sat <- checkSat assertion
   case sat of
@@ -141,8 +160,10 @@ checkSatB assertion = do
     SMT.Unsat      -> return False
     SMT.SatUnknown -> return False
 
-checkSatWithLog :: SMT.SMTQueryable t
-                => LogLevel -> Assertion t -> Ceili SMT.SatResult
+checkSatWithLog :: SMT.SatCheckable t
+                => LogLevel
+                -> Assertion t
+                -> Ceili SMT.SatResult
 checkSatWithLog level assertion = do
   result <- runWithLog level $ (\logger -> SMT.checkSatFL logger assertion)
   case result of
@@ -156,10 +177,11 @@ runWithLog level task = do
     withFastLogger logType $ \logger ->
     task logger
 
-findCounterexample :: (SMT.SMTQueryable t, AssertionParseable t)
-                   => Assertion t -> Ceili (Maybe (Assertion t))
+findCounterexample :: (SMT.ValidCheckable t, AssertionParseable t)
+                   => Assertion t
+                   -> Ceili (Maybe (Assertion t))
 findCounterexample assertion = do
-  logType <- logTypeAt LogLevelDebug
+  logType <- logTypeAt LogLevelSMT
   result <- withTimeout $
             withFastLogger logType $ \logger ->
             SMT.checkValidFL logger assertion
@@ -176,7 +198,7 @@ findCounterexample assertion = do
 
 envFreshen :: FreshableNames a => a -> Ceili a
 envFreshen a = do
-  Env logd loge logi nextIds smtTimeout <- get
+  Env logs logd loge logi nextIds smtTimeout <- get
   let (nextIds', a') = runFreshen nextIds a
-  put $ Env logd loge logi nextIds' smtTimeout
+  put $ Env logs logd loge logi nextIds' smtTimeout
   return a'

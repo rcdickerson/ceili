@@ -1,15 +1,17 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Ceili.SMT
-  ( SatResult(..)
-  , SMTQuery(..)
-  , SMTQueryable(..)
+  ( SatCheckable(..)
+  , SatResult(..)
   , ValidResult(..)
-  , checkSat
+  , ValidCheckable(..)
+  , checkSatNoLog
   , checkSatFL
-  , checkValid
+  , checkValidNoLog
   , checkValidFL
   ) where
 
@@ -26,57 +28,25 @@ import qualified System.Log.FastLogger as FL
 data SatResult = Sat String | Unsat | SatUnknown
 data ValidResult = Valid | Invalid String | ValidUnknown
 
-checkValid :: SMTQueryable t
-           => C.Assertion t -> IO ValidResult
-checkValid assertion = do
+checkValidNoLog :: ValidCheckable t => C.Assertion t -> IO ValidResult
+checkValidNoLog assertion = do
   logger <- SSMT.newLogger 0
-  checkValidWithLogger logger assertion
+  checkValid logger assertion
 
-checkValidFL :: SMTQueryable t
-             => FL.FastLogger -> C.Assertion t -> IO ValidResult
+checkValidFL :: ValidCheckable t => FL.FastLogger -> C.Assertion t -> IO ValidResult
 checkValidFL fastLogger assertion = do
   ssmtLogger <- fastLoggerAdapter fastLogger
-  checkValidWithLogger ssmtLogger assertion
+  checkValid ssmtLogger assertion
 
-checkValidWithLogger :: SMTQueryable t
-                     => SSMT.Logger -> C.Assertion t -> IO ValidResult
-checkValidWithLogger logger assertion = do
-  satResult <- checkSatWithLogger logger $ C.Not assertion
-  return $ case satResult of
-    Sat model  -> Invalid model
-    Unsat      -> Valid
-    SatUnknown -> ValidUnknown
-
-checkSat :: SMTQueryable t
-         => C.Assertion t -> IO SatResult
-checkSat assertion = do
+checkSatNoLog :: SatCheckable t => C.Assertion t -> IO SatResult
+checkSatNoLog assertion = do
   logger <- SSMT.newLogger 0
-  checkSatWithLogger logger assertion
+  checkSat logger assertion
 
-checkSatFL :: SMTQueryable t
-           => FL.FastLogger -> C.Assertion t -> IO SatResult
+checkSatFL :: SatCheckable t => FL.FastLogger -> C.Assertion t -> IO SatResult
 checkSatFL fastLogger assertion = do
   ssmtLogger <- fastLoggerAdapter fastLogger
-  checkSatWithLogger ssmtLogger assertion
-
-checkSatWithLogger :: SMTQueryable t
-                   => SSMT.Logger
-                   -> C.Assertion t
-                   -> IO SatResult
-checkSatWithLogger logger assertion = do
-  let (SMTQuery fvs query) = buildSMTQuery $ assertion
-  solver <- (SSMT.newSolver "z3" ["-in"]) $ Just logger
-  declareFVs solver fvs
-  SSMT.assert solver $ SSMT.Atom query
-  result <- SSMT.check solver
-  case result of
-    SSMT.Sat -> do
-      model <- SSMT.command solver $ SSMT.List [SSMT.Atom "get-model"]
-      let sat = Sat $ SSMT.showsSExpr model ""
-      _ <- SSMT.stop solver
-      return sat
-    SSMT.Unsat   -> SSMT.stop solver >> return Unsat
-    SSMT.Unknown -> SSMT.stop solver >> return SatUnknown
+  checkSat ssmtLogger assertion
 
 fastLoggerAdapter :: FL.FastLogger -> IO SSMT.Logger
 fastLoggerAdapter fastLogger = do
@@ -102,20 +72,42 @@ toDeclareConst name typ =
   SSMT.Atom . unpack $ "(declare-const " <> C.toSMT name <> " " <> pack typ <> ")"
 
 
+------------------
+-- SatCheckable --
+------------------
+
+class SatCheckable t where
+  checkSat :: SSMT.Logger -> C.Assertion t -> IO SatResult
+
+instance SatCheckable Integer where
+  checkSat logger assertion = do
+    let fvs = Set.toList . C.freeVars $ assertion
+    let typePair name = (name, unpack $ smtTypeString @Integer)
+    solver <- (SSMT.newSolver "z3" ["-in"]) $ Just logger
+    declareFVs solver $ map typePair fvs
+    SSMT.assert solver $ SSMT.Atom (unpack . toSMT $ assertion)
+    result <- SSMT.check solver
+    case result of
+      SSMT.Sat -> do
+        model <- SSMT.command solver $ SSMT.List [SSMT.Atom "get-model"]
+        let sat = Sat $ SSMT.showsSExpr model ""
+        _ <- SSMT.stop solver
+        return sat
+      SSMT.Unsat   -> SSMT.stop solver >> return Unsat
+      SSMT.Unknown -> SSMT.stop solver >> return SatUnknown
+
+
 --------------------
--- Query Building --
+-- ValidCheckable --
 --------------------
 
-data SMTQuery = SMTQuery { smtq_vars  :: [(Name, String)]
-                         , smtq_query :: String
-                         }
+class ValidCheckable t where
+  checkValid :: SSMT.Logger -> C.Assertion t -> IO ValidResult
 
-class SMTQueryable t where
-  buildSMTQuery :: C.Assertion t -> SMTQuery
-
-instance SMTQueryable Integer where
-  buildSMTQuery assertion =
-    let
-      fvs = Set.toList . C.freeVars $ assertion
-      typePair name = (name, unpack $ smtTypeString @Integer)
-    in SMTQuery (map typePair fvs) (unpack . toSMT $ assertion)
+instance ValidCheckable Integer where
+  checkValid logger assertion = do
+    satResult <- checkSat logger $ C.Not assertion
+    return $ case satResult of
+      Sat model  -> Invalid model
+      Unsat      -> Valid
+      SatUnknown -> ValidUnknown

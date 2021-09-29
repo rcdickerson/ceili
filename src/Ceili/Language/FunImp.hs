@@ -66,7 +66,6 @@ import Ceili.Language.Compose
 import Ceili.Language.Imp
 import Ceili.Literal
 import Ceili.Name
-import Ceili.SMTString
 import Ceili.StatePredicate
 import Control.Monad ( foldM )
 import Data.Map ( Map )
@@ -296,7 +295,7 @@ instance Pretty t => Pretty (FunImpProgram t) where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTQueryable t
+         , ValidCheckable t
          , AssertionParseable t
          , Pretty t
          , FunImplLookup c (FunImpProgram t)
@@ -331,7 +330,7 @@ assignBackward ctx params args post =
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTQueryable t
+         , ValidCheckable t
          , Pretty t
          , AssertionParseable t
          , FunImplLookup c (FunImpProgram t)

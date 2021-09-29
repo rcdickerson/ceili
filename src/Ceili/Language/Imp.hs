@@ -65,7 +65,6 @@ import Ceili.Language.Compose
 import Ceili.Literal
 import Ceili.Name
 import Ceili.ProgState
-import Ceili.SMTString
 import Ceili.StatePredicate
 import Data.List ( partition )
 import Data.UUID
@@ -660,7 +659,7 @@ instance ImpBackwardPT c e t => ImpBackwardPT c (ImpIf t e) t where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTQueryable t
+         , ValidCheckable t
          , Pretty t
          , AssertionParseable t
          , CollectableNames e
@@ -692,7 +691,7 @@ instance ( Embeddable Integer t
       return $ A.And [inv, loopWP, endWP]
 
 getLoopInvariant :: ( Embeddable Integer t
-                    , SMTQueryable t
+                    , ValidCheckable t
                     , Ord t
                     , Pretty t
                     , AssertionParseable t
@@ -726,7 +725,7 @@ instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
   impBackwardPT ctx (Inr f) post = impBackwardPT ctx f post
 
 instance ( Embeddable Integer t
-         , SMTQueryable t
+         , ValidCheckable t
          , Pretty t
          , Ord t
          , AssertionParseable t
@@ -779,7 +778,7 @@ instance ImpForwardPT c e t => ImpForwardPT c (ImpIf t e) t where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTQueryable t
+         , ValidCheckable t
          , Pretty t
          , CollectableNames e
          , ImpForwardPT c e t )
@@ -805,7 +804,7 @@ instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTQueryable t
+         , ValidCheckable t
          , Pretty t
          ) => ImpForwardPT c (ImpProgram t) t where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre

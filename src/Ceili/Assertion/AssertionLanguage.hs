@@ -15,6 +15,9 @@ module Ceili.Assertion.AssertionLanguage
   , AssertionAlgebra(..)
   , Name(..)
   , SubstitutableArith(..)
+  , aAnd
+  , aImp
+  , aOr
   , eval
   , freeVars
   , subAriths
@@ -274,6 +277,43 @@ instance (SMTString t, SMTTypeString t) => SMTString (Assertion t) where
             qvarsSMT = S8.intercalate " " $ map typedQVar qvars
         in "(" <> name <> " (" <> qvarsSMT <> ") " <> toSMT body <> ")"
 
+aAnd :: [Assertion t] -> Assertion t
+aAnd elts = case buildAndElts elts of
+  []        -> ATrue
+  AFalse:[] -> AFalse
+  single:[] -> single
+  as        -> And as
+  where
+    buildAndElts :: [Assertion t] -> [Assertion t]
+    buildAndElts es = case es of
+      []              -> []
+      (ATrue:rest)    -> buildAndElts rest
+      (AFalse:_)      -> [AFalse]
+      ((And as):rest) -> buildAndElts (as ++ rest)
+      (a:as)          -> a : buildAndElts as
+
+aOr :: [Assertion t] -> Assertion t
+aOr elts = case buildOrElts elts of
+  []        -> ATrue
+  ATrue:[]  -> ATrue
+  single:[] -> single
+  as        -> Or as
+  where
+    buildOrElts :: [Assertion t] -> [Assertion t]
+    buildOrElts es = case es of
+      []             -> []
+      (ATrue:_)      -> [ATrue]
+      (AFalse:rest)  -> buildOrElts rest
+      ((Or as):rest) -> buildOrElts (as ++ rest)
+      (a:as)         -> a : buildOrElts as
+
+aImp :: Assertion t -> Assertion t -> Assertion t
+aImp p q = case (p, q) of
+  (ATrue, _)  -> q
+  (AFalse, _) -> ATrue
+  (_, ATrue)  -> ATrue
+  (_, AFalse) -> Not p
+  _           -> Imp p q
 
 --------------------------
 -- Assertion Evaluation --

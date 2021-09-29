@@ -78,9 +78,9 @@ plog_d msg = lift $ log_d msg
 ----------------
 
 loopInvGen :: ( Embeddable Integer t
-              , SMTQueryable t
               , Ord t
               , Pretty t
+              , SMT.ValidCheckable t
               , StatePredicate (Assertion t) t
               , AssertionParseable t )
            => Set Name
@@ -98,9 +98,9 @@ loopInvGen names literals backwardPT ctx cond body post goodTests = do
   evalStateT task $ PieEnv names literals
 
 loopInvGen' :: ( Embeddable Integer t
-               , SMTQueryable t
                , Ord t
                , Pretty t
+               , SMT.ValidCheckable t
                , StatePredicate (Assertion t) t
                , AssertionParseable t )
             => BackwardPT c p t
@@ -138,9 +138,9 @@ loopInvGen' backwardPT ctx cond body post goodTests = do
            return $ Just weakenedInvar
 
 makeInductive :: ( Embeddable Integer t
-                 , SMTQueryable t
                  , Ord t
                  , Pretty t
+                 , SMT.ValidCheckable t
                  , StatePredicate (Assertion t) t
                  , AssertionParseable t )
               => BackwardPT c p t
@@ -226,7 +226,7 @@ paretoOptimize sufficient assertions =
 vPreGen :: ( Embeddable Integer t
            , Ord t
            , Pretty t
-           , SMTQueryable t
+           , SMT.ValidCheckable t
            , StatePredicate (Assertion t) t
            , AssertionParseable t )
         => (Assertion t)
