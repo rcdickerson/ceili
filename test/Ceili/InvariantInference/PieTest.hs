@@ -16,7 +16,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 
-runAndAssertEquivalent :: (SMTString t, SMTTypeString t)
+runAndAssertEquivalent :: (SMTString t, SMTTypeString t, ValidCheckable t)
                        => Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
 runAndAssertEquivalent expected actual = do
   result <- runCeili emptyEnv actual

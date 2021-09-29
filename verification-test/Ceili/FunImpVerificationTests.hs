@@ -81,7 +81,7 @@ runForward expectedResult progFile pre post = do
   let prog = fimpl_body $ funEnv Map.! "main"
   assertRunsWithoutErrors (envFromProg prog) (impForwardPT funEnv prog pre) $
     \result -> do
-      smtResult <- SMT.checkValid $ Imp result post
+      smtResult <- SMT.checkValidNoLog $ Imp result post
       assertSMTResult expectedResult smtResult
 
 data BackwardPTContext = BackwardPTContext { bpc_impls  :: FunImplEnv (FunImpProgram Integer)
@@ -105,7 +105,7 @@ runBackward expectedResult progFile pre post = do
         impBackwardPT ptCtx prog post
   assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do
-      smtResult <- SMT.checkValid $ Imp pre result
+      smtResult <- SMT.checkValidNoLog $ Imp pre result
       assertSMTResult expectedResult smtResult
 
 

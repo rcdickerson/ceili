@@ -70,7 +70,7 @@ runForward expectedResult progFile pre post = do
   prog <- readAndParse progFile
   assertRunsWithoutErrors (envFromProg prog) (impForwardPT () prog pre) $
     \result -> do
-      smtResult <- SMT.checkValid $ Imp result post
+      smtResult <- SMT.checkValidNoLog $ Imp result post
       assertSMTResult expectedResult smtResult
 
 runBackward :: ExpectResult -> String -> Assertion Integer -> Assertion Integer -> IO ()
@@ -82,7 +82,7 @@ runBackward expectedResult progFile pre post = do
         impBackwardPT ctx prog post
   assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do
-      smtResult <- SMT.checkValid $ Imp pre result
+      smtResult <- SMT.checkValidNoLog $ Imp pre result
       assertSMTResult expectedResult smtResult
 
 
