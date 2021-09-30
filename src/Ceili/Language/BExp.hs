@@ -124,7 +124,7 @@ class BExpAlgebra t where
   beLte :: t -> t -> Bool
   beGte :: t -> t -> Bool
 
-instance {-# OVERLAPPABLE #-} (Ord t, Eq t) => BExpAlgebra t where
+instance BExpAlgebra Integer where
   beEq  = (==)
   beLt  = (<)
   beGt  = (>)
