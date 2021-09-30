@@ -39,6 +39,7 @@ module Ceili.Language.FunImp
   , LoopHeadStates
   , MapImpType(..)
   , Name(..)
+  , SplitOnBExp(..)
   , TransformMetadata(..)
   , eval
   , impAsgn
@@ -212,6 +213,7 @@ getOrFail state name = case Map.lookup name state of
   Just val -> return val
 
 instance ( FunImplLookup c e
+         , SplitOnBExp t
          , Evaluable c t (AExp t) t
          , Evaluable c t e (ImpStep t)
          ) => Evaluable c t (ImpCall t e) (ImpStep t) where
@@ -220,20 +222,18 @@ instance ( FunImplLookup c e
     let evalArg = eval @c @t @(AExp t) @t ctx st
     let eargs = map evalArg args
     let inputSt = Map.fromList $ zip (fimpl_params impl) eargs
-    result <- eval ctx inputSt (fimpl_body impl)
-    case result of
-      Nothing -> return Nothing
-      Just outputSt -> do
-        retVals <- sequence $ map (getOrFail outputSt) (fimpl_returns impl)
-        let assignments = Map.fromList $ zip assignees retVals
-        return . Just $ Map.union assignments st
+    let setAssignments outSt = do
+          retVals <- mapM (getOrFail outSt) (fimpl_returns impl)
+          let assgns = Map.fromList $ zip assignees retVals
+          return $ Map.union assgns st
+    mapM setAssignments =<< eval ctx inputSt (fimpl_body impl)
 
 -- TODO: Evaluating a function call should cost fuel to prevent infinite recursion.
 
 instance ( FuelTank c
          , FunImplLookup c (FunImpProgram t)
+         , SplitOnBExp t
          , Evaluable c t (AExp t) t
-         , Evaluable c t (BExp t) Bool
          )
         => Evaluable c t (FunImpProgram t) (ImpStep t) where
   eval ctx st (In program) = eval ctx st program
@@ -252,8 +252,8 @@ instance ( FunImplLookup c e
 instance ( Ord t
          , FuelTank c
          , FunImplLookup c (FunImpProgram t)
+         , SplitOnBExp t
          , Evaluable c t (AExp t) t
-         , Evaluable c t (BExp t) Bool
          ) => CollectLoopHeadStates c (FunImpProgram t) t where
   collectLoopHeadStates ctx sts (In f) = collectLoopHeadStates ctx sts f
 
