@@ -34,6 +34,7 @@ module Ceili.Language.Imp
   , MapImpType(..)
   , Name(..)
   , ProgState
+  , SplitOnBExp(..)
   , TransformMetadata(..)
   , emptyWhileMetadata
   , eval
@@ -66,12 +67,10 @@ import Ceili.Literal
 import Ceili.Name
 import Ceili.ProgState
 import Ceili.StatePredicate
-import Data.List ( partition )
 import Data.UUID
 import qualified Data.UUID.V4 as UUID
 import Data.Map ( Map )
 import qualified Data.Map as Map
-import Data.Maybe ( catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 import Prettyprinter
@@ -364,6 +363,8 @@ instance MapImpType t t' (ImpProgram t) (ImpProgram t') where
 -- Interpreter --
 -----------------
 
+type ImpStep t = Ceili [ProgState t]
+
 data Fuel = Fuel Int
           | InfiniteFuel
 
@@ -383,6 +384,17 @@ instance SplitOnBExp Integer where
   splitOnBExp bexp st = return $ if eval () st bexp
                                  then (Nothing, Just st)
                                  else (Just st, Nothing)
+
+partitionOnBExp :: SplitOnBExp t => BExp t -> [ProgState t] -> Ceili ([ProgState t], [ProgState t])
+partitionOnBExp bexp sts = do
+  splitSts <- mapM (splitOnBExp bexp) sts
+  let foldSts (mFSt, mTSt) (fSts, tSts) =
+        case (mFSt, mTSt) of
+          (Nothing , Nothing)  -> (fSts    , tSts)
+          (Just fSt, Nothing)  -> (fSt:fSts, tSts)
+          (Nothing , Just tSt) -> (fSts    , tSt:tSts)
+          (Just fSt, Just tSt) -> (fSt:fSts, tSt:tSts)
+  return $ foldr foldSts ([], []) splitSts
 
 decrementFuel :: (FuelTank f) => f -> f
 decrementFuel fuel =
@@ -407,21 +419,21 @@ evalSeq ctx st (ImpSeq stmts) =
   case stmts of
     [] -> return [st]
     (stmt:rest) -> do
-      mSt' <- eval ctx st stmt
-      case mSt' of
-        Nothing  -> return []
-        Just st' -> evalSeq ctx st' (ImpSeq rest)
+      mSts' <- eval ctx st stmt
+      case mSts' of
+        [] -> return []
+        sts' -> return . concat =<< mapM (\s -> evalSeq ctx s (ImpSeq rest)) sts'
 
 instance ( SplitOnBExp t, Evaluable c t e (ImpStep t) )
         => Evaluable c t (ImpIf t e) (ImpStep t) where
   eval ctx st (ImpIf cond t f) = do
-    (mFalseSt, mTrueSt) <- eval ctx st cond
-    let falseSts = case mFalseSt of
-                     Nothing  -> []
-                     Just fSt -> eval ctx fSt f
-    let trueSts  = case mTrueSt of
-                     Nothing  -> []
-                     Just tSt -> eval ctx tSt t
+    (mFalseSt, mTrueSt) <- splitOnBExp cond st
+    falseSts <- case mFalseSt of
+                  Nothing  -> return []
+                  Just fSt -> eval ctx fSt f
+    trueSts  <- case mTrueSt of
+                  Nothing  -> return []
+                  Just tSt -> eval ctx tSt t
     return $ falseSts ++ trueSts
 
 instance ( FuelTank c
@@ -430,8 +442,9 @@ instance ( FuelTank c
          )
         => Evaluable c t (ImpWhile t e) (ImpStep t) where
   eval = evalWhile
-
-evalWhile :: ( FuelTank c
+  
+evalWhile :: forall c t e.
+             ( FuelTank c
              , SplitOnBExp t
              , Evaluable c t e (ImpStep t)
              )
@@ -440,23 +453,20 @@ evalWhile :: ( FuelTank c
           -> (ImpWhile t e)
           -> ImpStep t
 evalWhile ctx st loop@(ImpWhile cond body meta) = do
-    (mFalseSt, mTrueSt) <- splitOnBExp cond st
-    let falseSts = case mFalseSt of
-                     Nothing  -> []
-                     Just fSt -> [fSt]
-    trueSts <- case mTrueSt of
-                 Nothing  -> return []
-                 Just tSt ->
-                   let ctx' = decrementFuel ctx
-                   in case (getFuel ctx') of
-                        Fuel n | n <= 0 -> log_e "Evaluation ran out of fuel" >> return []
-                        _ -> do
-                          mSt' <- eval ctx' tSt body
-                          case mSt' of
-                            []   -> return []
-                            sts' -> (return . concat) =<< mapM (\s -> evalWhile ctx' s loop) sts'
-
-    return $ falseSts ++ trueSts
+  (mFalseSt, mTrueSt) <- splitOnBExp cond st
+  let falseSts = case mFalseSt of
+                   Nothing  -> []
+                   Just fSt -> [fSt]
+  trueSts <- case mTrueSt of
+               Nothing  -> return []
+               Just tSt ->
+                 let ctx' = decrementFuel ctx
+                 in case (getFuel ctx') of
+                      Fuel n | n <= 0 -> log_e "Evaluation ran out of fuel" >> return []
+                      _ -> do
+                        sts' <- eval ctx' tSt body :: ImpStep t
+                        return . concat =<< mapM (\s -> evalWhile ctx' s loop) sts'
+  return $ falseSts ++ trueSts
 
 instance ( FuelTank c
          , Evaluable c t (AExp t) t
@@ -487,6 +497,7 @@ instance Evaluable c t (AExp t) t => CollectLoopHeadStates c (ImpAsgn t e) t whe
 
 instance ( Ord t
          , CollectLoopHeadStates c e t
+         , SplitOnBExp t
          , Evaluable c t e (ImpStep t)
          )
          => CollectLoopHeadStates c (ImpSeq t e) t where
@@ -494,6 +505,7 @@ instance ( Ord t
 
 seqHeadStates :: ( Ord t
                  , CollectLoopHeadStates c e t
+                 , SplitOnBExp t
                  , Evaluable c t e (ImpStep t))
               => c
               -> [ProgState t]
@@ -504,26 +516,24 @@ seqHeadStates ctx sts (ImpSeq stmts) =
     [] -> return Map.empty
     stmt:rest -> do
       stmtHeads <- collectLoopHeadStates ctx sts stmt
-      mSts' <- sequence $ map (\st -> eval ctx st stmt) sts
-      let sts' = catMaybes mSts'
+      sts' <- return . concat =<< mapM (\s -> eval ctx s stmt) sts
       restHeads <- seqHeadStates ctx sts' (ImpSeq rest)
       return $ unionLoopHeadStates stmtHeads restHeads
 
 instance ( Ord t
-         , Evaluable c t (BExp t) Bool
+         , SplitOnBExp t
          , CollectLoopHeadStates c e t
          )
          => CollectLoopHeadStates c (ImpIf t e) t where
-  collectLoopHeadStates ctx sts (ImpIf cond t f) =
-    let (tStates, fStates) = partition (\st -> eval ctx st cond) sts
-    in do
-      tHeads <- collectLoopHeadStates ctx tStates t
-      fHeads <- collectLoopHeadStates ctx fStates f
-      return $ unionLoopHeadStates tHeads fHeads
+  collectLoopHeadStates ctx sts (ImpIf cond t f) = do
+    (tStates, fStates) <- partitionOnBExp cond sts
+    tHeads <- collectLoopHeadStates ctx tStates t
+    fHeads <- collectLoopHeadStates ctx fStates f
+    return $ unionLoopHeadStates tHeads fHeads
 
 instance ( FuelTank c
          , Ord t
-         , Evaluable c t (BExp t) Bool
+         , SplitOnBExp t
          , CollectLoopHeadStates c e t
          , Evaluable c t e (ImpStep t)
          )
@@ -533,13 +543,13 @@ instance ( FuelTank c
       Nothing  -> throwError "Loop missing ID."
       Just lid -> return lid
     loopStates <- iterateLoopStates ctx 0 sts loop
-    let (trueSts, _) = partition (\st -> eval ctx st cond) sts
+    (_, trueSts) <- partitionOnBExp cond sts
     bodyStates <- collectLoopHeadStates ctx trueSts body
     return $ unionLoopHeadStates (Map.singleton loopId loopStates) bodyStates
 
 iterateLoopStates :: ( FuelTank c
                      , Ord t
-                     , Evaluable c t (BExp t) (Ceili Bool)
+                     , SplitOnBExp t
                      , Evaluable c t e (ImpStep t)
                      )
                   => c
@@ -552,12 +562,12 @@ iterateLoopStates ctx iterNum sts loop@(ImpWhile cond body _) = do
   case getFuel ctx of
     Fuel 0 -> return thisIter
     _ -> do
-      let (trueSts, _) = partition (\st -> eval ctx st cond) sts
+      (_, trueSts) <- partitionOnBExp cond sts
       case trueSts of
         [] -> return thisIter
         _  -> do
-          nextSts <- sequence $ map (\st -> eval ctx st body) sts
-          rest <- iterateLoopStates (decrementFuel ctx) (iterNum + 1) (catMaybes nextSts) loop
+          nextSts <- return . concat =<< mapM (\s -> eval ctx s body) trueSts
+          rest <- iterateLoopStates (decrementFuel ctx) (iterNum + 1) nextSts loop
           return $ unionIterStates thisIter rest
 
 instance (CollectLoopHeadStates c (f e) t, CollectLoopHeadStates c (g e) t) =>
@@ -567,8 +577,8 @@ instance (CollectLoopHeadStates c (f e) t, CollectLoopHeadStates c (g e) t) =>
 
 instance ( FuelTank c
          , Ord t
+         , SplitOnBExp t
          , Evaluable c t (AExp t) t
-         , Evaluable c t (BExp t) (Ceili Bool)
          ) => CollectLoopHeadStates c (ImpProgram t) t where
   collectLoopHeadStates fuel sts (In f) = collectLoopHeadStates fuel sts f
 
