@@ -15,6 +15,7 @@ module Ceili.InvariantInference.Pie
   , getConflict
   , pie
   , loopInvGen
+  , mkPieEnv
   ) where
 
 import Ceili.Assertion
@@ -27,10 +28,13 @@ import Ceili.PTS ( BackwardPT )
 import Ceili.ProgState
 import qualified Ceili.SMT as SMT
 import Ceili.StatePredicate
+import Control.Monad ( filterM )
 import Control.Monad.Trans ( lift )
-import Control.Monad.Trans.State ( StateT, evalStateT, get )
+import Control.Monad.Trans.State ( StateT, evalStateT, get, put )
 import Data.Maybe ( isJust )
 import Data.Set ( Set )
+import qualified Data.Set as Set
+import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
@@ -57,11 +61,42 @@ createFV features tests =
 -- Computation --
 -----------------
 
-data PieEnv t = PieEnv { pe_names :: Set Name
-                       , pe_lits  :: Set t
+data PieEnv t = PieEnv { pe_names      :: Set Name
+                       , pe_lits       :: Set t
+                       , pe_cfilter    :: Assertion t -> Ceili Bool
+                       , pe_candidates :: Map Int (Set (Assertion t))
                        }
 
 type PieM t a = StateT (PieEnv t) Ceili a
+
+mkPieEnv :: Set Name -> Set t -> [Assertion t -> Ceili Bool] -> PieEnv t
+mkPieEnv names lits filters =
+  let combinedFilter assertion = return . and =<< mapM ($ assertion) filters
+  in PieEnv names lits combinedFilter Map.empty
+
+getFeatureCandidates :: ( Ord t
+                        , Embeddable Integer t
+                        ) => Int -> PieM t (Set (Assertion t))
+getFeatureCandidates size = do
+  PieEnv names lits cfilter candidateMap <- get
+  let mCandidates = Map.lookup size candidateMap
+  case mCandidates of
+    Just candidates -> return candidates
+    Nothing -> do
+      candidates <- lift $ do
+        let lieqs = LI.linearInequalities names lits size
+        filtered <- filterM cfilter $ Set.toList lieqs
+        return $ Set.fromList filtered
+      let candidateMap' = Map.insert size candidates candidateMap
+      put $ PieEnv names lits cfilter candidateMap'
+      return candidates
+
+getCandidatesUpToSize :: ( Ord t
+                         , Embeddable Integer t
+                         ) => Int -> PieM t (Map Int (Set (Assertion t)))
+getCandidatesUpToSize size = do
+  candidates <- mapM getFeatureCandidates $ [0..size]
+  return $ Map.fromList $ zip [0..size] candidates
 
 plog_e :: String -> PieM t ()
 plog_e msg = lift $ log_e msg
@@ -85,6 +120,7 @@ loopInvGen :: ( Embeddable Integer t
               , AssertionParseable t )
            => Set Name
            -> Set t
+           -> [Assertion t -> Ceili Bool]
            -> BackwardPT c p t
            -> c
            -> Assertion t
@@ -92,10 +128,10 @@ loopInvGen :: ( Embeddable Integer t
            -> Assertion t
            -> [ProgState t]
            -> Ceili (Maybe (Assertion t))
-loopInvGen names literals backwardPT ctx cond body post goodTests = do
+loopInvGen names literals candidateFilters backwardPT ctx cond body post goodTests = do
   log_i $ "[PIE] Beginning invariant inference with PIE"
   let task = loopInvGen' backwardPT ctx cond body post goodTests
-  evalStateT task $ PieEnv names literals
+  evalStateT task $ mkPieEnv names literals candidateFilters
 
 loopInvGen' :: ( Embeddable Integer t
                , Ord t
@@ -315,9 +351,10 @@ findAugmentingFeature :: ( Embeddable Integer t
                       -> PieM t (Maybe (Assertion t))
 findAugmentingFeature xGood xBad = do
   let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
-  PieEnv names lits <- get
   let (goodTests, badTests) = (Vector.toList xGood, Vector.toList xBad)
-  mNewFeature <- lift $ SL.findSeparator maxFeatureSize (LI.linearInequalities names lits) goodTests badTests
+  candidates <- getCandidatesUpToSize maxFeatureSize
+  let getCandidates i = Map.findWithDefault Set.empty i candidates
+  mNewFeature <- lift $ SL.findSeparator maxFeatureSize getCandidates goodTests badTests
   case mNewFeature of
     Just newFeature -> do
       return $ Just newFeature

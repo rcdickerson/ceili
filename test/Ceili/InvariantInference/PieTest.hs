@@ -192,7 +192,7 @@ test_pie = let
                               , Map.fromList [(Name "x" 0, -5)] ]
   expected  = Lt @Integer (Num 0) (Var x)
   task = pie Vector.empty goodTests badTests
-  in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits
+  in runAndAssertEquivalent expected $ evalStateT task $ mkPieEnv names lits []
 
 
 --

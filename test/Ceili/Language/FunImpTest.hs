@@ -45,7 +45,7 @@ instance FunImplLookup ImplEnv (FunImpProgram Integer) where
   lookupFunImpl (ImplEnv impls _ _) = lookupFunImpl impls
 
 instance ImpPieContextProvider ImplEnv Integer where
-  impPieCtx (ImplEnv _ names lits) = ImpPieContext Map.empty names lits
+  impPieCtx (ImplEnv _ names lits) = ImpPieContext Map.empty names lits []
 
 implEnv = ImplEnv { ie_impls = Map.fromList [ ("add1", add1Impl)
                                             , ("add2", add2Impl)

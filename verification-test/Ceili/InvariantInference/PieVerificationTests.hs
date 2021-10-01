@@ -21,7 +21,7 @@ import System.Log.FastLogger
 
 data EmptyPieContextProvider = EmptyPieContextProvider
 instance ImpPieContextProvider EmptyPieContextProvider Integer where
-  impPieCtx _ = ImpPieContext Map.empty Set.empty Set.empty
+  impPieCtx _ = ImpPieContext Map.empty Set.empty Set.empty []
 
 env :: ImpProgram t -> Assertion t -> Env
 env prog post = defaultEnv names
@@ -71,4 +71,4 @@ test_loopInvGen = let
   expected = Eq (Sub [Var y, Var x])
                 (Sub [Var n, Var m])
   in runAndAssertEquivalent (env body post) expected
-     $ loopInvGen names lits impBackwardPT EmptyPieContextProvider (bexpToAssertion cond) body post tests
+     $ loopInvGen names lits [] impBackwardPT EmptyPieContextProvider (bexpToAssertion cond) body post tests

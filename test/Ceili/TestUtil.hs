@@ -27,7 +27,7 @@ import Test.Framework
 
 data EmptyPieContextProvider = EmptyPieContextProvider
 instance ImpPieContextProvider EmptyPieContextProvider Integer where
-  impPieCtx _ = ImpPieContext Map.empty Set.empty Set.empty
+  impPieCtx _ = ImpPieContext Map.empty Set.empty Set.empty []
 
 envImp :: ImpProgram t -> Env
 envImp prog = defaultEnv (namesIn prog)

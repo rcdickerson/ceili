@@ -402,8 +402,6 @@ decrementFuel fuel =
     Fuel n | n > 0 -> setFuel fuel $ Fuel (n - 1)
     _ -> fuel
 
-type ImpStep t = Ceili [ProgState t]
-
 instance Evaluable c t (ImpSkip t e) (ImpStep t) where
   eval _ st _ = return [st]
 
@@ -442,7 +440,7 @@ instance ( FuelTank c
          )
         => Evaluable c t (ImpWhile t e) (ImpStep t) where
   eval = evalWhile
-  
+
 evalWhile :: forall c t e.
              ( FuelTank c
              , SplitOnBExp t
@@ -642,9 +640,10 @@ class ImpPieContextProvider ctx t where
   impPieCtx :: ctx -> ImpPieContext t
 
 data ImpPieContext t = ImpPieContext
-  { pc_loopHeadStates :: LoopHeadStates t
-  , pc_programNames   :: Set Name
-  , pc_programLits    :: Set t
+  { pc_loopHeadStates   :: LoopHeadStates t
+  , pc_programNames     :: Set Name
+  , pc_programLits      :: Set t
+  , pc_candidateFilters :: [Assertion t -> Ceili Bool]
   }
 
 instance ImpPieContextProvider (ImpPieContext t) t where
@@ -741,11 +740,12 @@ getLoopInvariant ctx (ImpWhile condB body meta) post =
       case mHeadStates of
         Nothing -> return Nothing
         Just testStates -> do
-          let names = pc_programNames pieCtx
-          let lits  = pc_programLits  pieCtx
-          let tests = Set.toList . Set.unions . Map.elems $ testStates
-          let cond  = bexpToAssertion condB
-          Pie.loopInvGen names lits impBackwardPT ctx cond body post tests
+          let names   = pc_programNames pieCtx
+          let lits    = pc_programLits  pieCtx
+          let filters = pc_candidateFilters pieCtx
+          let tests   = Set.toList . Set.unions . Map.elems $ testStates
+          let cond    = bexpToAssertion condB
+          Pie.loopInvGen names lits filters impBackwardPT ctx cond body post tests
 
 instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
          ImpBackwardPT c ((f :+: g) e) t where
