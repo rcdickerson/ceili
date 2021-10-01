@@ -402,6 +402,8 @@ decrementFuel fuel =
     Fuel n | n > 0 -> setFuel fuel $ Fuel (n - 1)
     _ -> fuel
 
+type ImpStep t = Ceili [ProgState t]
+
 instance Evaluable c t (ImpSkip t e) (ImpStep t) where
   eval _ st _ = return [st]
 
@@ -440,7 +442,7 @@ instance ( FuelTank c
          )
         => Evaluable c t (ImpWhile t e) (ImpStep t) where
   eval = evalWhile
-
+  
 evalWhile :: forall c t e.
              ( FuelTank c
              , SplitOnBExp t
