@@ -16,12 +16,17 @@ import Ceili.CeiliEnv
 import Ceili.FeatureLearning.LinearInequalities
 import Ceili.Name
 import qualified Ceili.SMT as SMT
-import Ceili.SMTString
 import Control.Monad ( filterM )
 import Data.Set ( Set )
 import qualified Data.Set as Set
+import Prettyprinter
 
-infer :: (Embeddable Integer t, Eq t, Ord t, SMTString t, SMTTypeString t)
+infer :: ( Embeddable Integer t
+         , SMT.ValidCheckable t
+         , Pretty t
+         , Eq t
+         , Ord t
+         )
       => Set Name
       -> Set t
       -> Int
@@ -38,7 +43,10 @@ infer names lits size precond computeSP = do
   log_i $ "[Houdini] Invariant: " ++ (show $ And inductiveClauses)
   return $ And inductiveClauses
 
-findCandidates :: (Embeddable Integer t, Ord t, Eq t, SMTString t, SMTTypeString t)
+findCandidates :: ( Embeddable Integer t
+                  , SMT.ValidCheckable t
+                  , Ord t
+                  , Eq t)
                => Set Name
                -> Set t
                -> Int
@@ -49,8 +57,8 @@ findCandidates names lits size precond = do
   log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)
   filterM (checkValidB . Imp precond) $ Set.toList candidates
 
-houdini :: (SMTString t, SMTTypeString t) =>
-           [Assertion t]
+houdini :: SMT.ValidCheckable t
+        => [Assertion t]
         -> (Assertion t -> Ceili (Assertion t))
         -> Ceili [Assertion t]
 houdini candidates computeSP = do

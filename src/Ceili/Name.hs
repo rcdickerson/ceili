@@ -62,7 +62,7 @@ instance SMTString Name where
 
 instance Pretty Name where
   pretty (Name h 0) = pretty h
-  pretty (Name h i) = pretty h <+> "!" <> pretty i
+  pretty (Name h i) = pretty h <> "!" <> pretty i
 
 liftHandleMap :: (String -> String) -> Name -> Name
 liftHandleMap f (Name h i) = Name (f h) i
@@ -193,7 +193,7 @@ runFreshen nextIds x =
   let (x', mapping) = runState (freshen x) $ FreshMapping nextIds Map.empty
   in (fr_nextIds mapping, x')
 
-buildFreshMap :: Traversable t =>  NextFreshIds -> t Name -> (NextFreshIds, Map Name Name)
+buildFreshMap :: Traversable t => NextFreshIds -> t Name -> (NextFreshIds, Map Name Name)
 buildFreshMap nextIds names =
   let
     replacements  = mapM freshReplacement names

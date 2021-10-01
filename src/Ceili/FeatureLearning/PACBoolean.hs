@@ -12,11 +12,11 @@ module Ceili.FeatureLearning.PACBoolean
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
-import Ceili.SMTString
 import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Vector ( Vector, (!) )
 import qualified Data.Vector as Vector
+import Prettyprinter
 
 
 type FeatureVector = Vector Bool
@@ -38,8 +38,8 @@ type FeatureVector = Vector Bool
 -- formula sizes before moving on to larger ones. If no possible combination of
 -- the given assertions separates the positive and negative samples, the
 -- algorithm will not terminate.
-learnBoolExpr :: (SMTString t, SMTTypeString t) =>
-                 Vector (Assertion t)
+learnBoolExpr :: Pretty t
+              => Vector (Assertion t)
               -> Vector FeatureVector
               -> Vector FeatureVector
               -> Ceili (Assertion t)
@@ -47,8 +47,8 @@ learnBoolExpr features posFV negFV = do
   log_d "[PAC] Begin learning boolean expression..."
   boolLearn features posFV negFV 1 Vector.empty
 
-boolLearn :: (SMTString t, SMTTypeString t) =>
-             Vector (Assertion t)
+boolLearn :: Pretty t
+          => Vector (Assertion t)
           -> Vector FeatureVector
           -> Vector FeatureVector
           -> Int
@@ -63,7 +63,7 @@ boolLearn features posFV negFV k prevClauses = do
   case mSolution of
     Just solution -> do
       let assertion = clausesToAssertion features $ Vector.toList solution
-      log_d $ "[PAC] Learned boolean expression: " ++ show assertion
+      log_d $ "[PAC] Learned boolean expression: " ++ (show . pretty) assertion
       return $ assertion
     Nothing -> boolLearn features posFV negFV (k + 1) clauses
 

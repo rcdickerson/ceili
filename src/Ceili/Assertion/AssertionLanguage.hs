@@ -15,6 +15,9 @@ module Ceili.Assertion.AssertionLanguage
   , AssertionAlgebra(..)
   , Name(..)
   , SubstitutableArith(..)
+  , aAnd
+  , aImp
+  , aOr
   , eval
   , freeVars
   , subAriths
@@ -25,7 +28,7 @@ import Ceili.Evaluation
 import Ceili.Literal
 import Ceili.Name
 import Ceili.ProgState
-import Ceili.SMTString ( SMTString(..), SMTTypeString(..) )
+import Ceili.SMTString
 import Data.ByteString ( ByteString )
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.Map as Map
@@ -48,11 +51,11 @@ data Arith t = Num t
              | Pow (Arith t) (Arith t)
            deriving (Eq, Ord, Functor)
 
-instance SMTString t => Show (Arith t) where
-  show = S8.unpack . toSMT
+instance Pretty t => Show (Arith t) where
+  show = show . pretty
 
-toSexp :: SMTString a => ByteString -> [a] -> ByteString
-toSexp name as = "(" <> name <> " "<> (S8.intercalate " " $ map toSMT as) <> ")"
+bsToSexp :: SMTString a => ByteString -> [a] -> ByteString
+bsToSexp name as = "(" <> name <> " "<> (S8.intercalate " " $ map toSMT as) <> ")"
 
 instance MappableNames (Arith t) where
   mapNames f arith = case arith of
@@ -102,12 +105,12 @@ instance SMTString t => SMTString (Arith t) where
   toSMT arith = case arith of
     Num n     -> toSMT n
     Var name  -> toSMT name
-    Add as    -> toSexp "+"   as
-    Sub as    -> toSexp "-"   as
-    Mul as    -> toSexp "*"   as
-    Div a1 a2 -> toSexp "/"   [a1, a2]
-    Mod a1 a2 -> toSexp "mod" [a1, a2]
-    Pow a1 a2 -> toSexp "^"   [a1, a2]
+    Add as    -> bsToSexp "+"   as
+    Sub as    -> bsToSexp "-"   as
+    Mul as    -> bsToSexp "*"   as
+    Div a1 a2 -> bsToSexp "/"   [a1, a2]
+    Mod a1 a2 -> bsToSexp "mod" [a1, a2]
+    Pow a1 a2 -> bsToSexp "^"   [a1, a2]
 
 
 ----------------------
@@ -174,8 +177,8 @@ data Assertion t = ATrue
                  | Exists   [Name] (Assertion t)
                deriving (Eq, Ord, Functor)
 
-instance (SMTString t, SMTTypeString t) => Show (Assertion t) where
-  show = S8.unpack . toSMT
+instance Pretty t => Show (Assertion t) where
+  show = show . pretty
 
 instance MappableNames (Assertion t) where
   mapNames f assertion = case assertion of
@@ -255,15 +258,15 @@ instance (SMTString t, SMTTypeString t) => SMTString (Assertion t) where
     ATrue         -> "true"
     AFalse        -> "false"
     Atom name     -> toSMT name
-    Not a         -> toSexp "not" [a]
-    And as        -> toSexp "and" as
-    Or as         -> toSexp "or" as
-    Imp a1 a2     -> toSexp "=>" [a1, a2]
-    Eq a1 a2      -> toSexp "="  [a1, a2]
-    Lt a1 a2      -> toSexp "<"  [a1, a2]
-    Gt a1 a2      -> toSexp ">"  [a1, a2]
-    Lte a1 a2     -> toSexp "<=" [a1, a2]
-    Gte a1 a2     -> toSexp ">=" [a1, a2]
+    Not a         -> bsToSexp "not" [a]
+    And as        -> bsToSexp "and" as
+    Or as         -> bsToSexp "or" as
+    Imp a1 a2     -> bsToSexp "=>" [a1, a2]
+    Eq a1 a2      -> bsToSexp "="  [a1, a2]
+    Lt a1 a2      -> bsToSexp "<"  [a1, a2]
+    Gt a1 a2      -> bsToSexp ">"  [a1, a2]
+    Lte a1 a2     -> bsToSexp "<=" [a1, a2]
+    Gte a1 a2     -> bsToSexp ">=" [a1, a2]
     Forall vars a -> quantToSMT "forall" vars a
     Exists vars a -> quantToSMT "exists" vars a
     where
@@ -274,6 +277,43 @@ instance (SMTString t, SMTTypeString t) => SMTString (Assertion t) where
             qvarsSMT = S8.intercalate " " $ map typedQVar qvars
         in "(" <> name <> " (" <> qvarsSMT <> ") " <> toSMT body <> ")"
 
+aAnd :: [Assertion t] -> Assertion t
+aAnd elts = case buildAndElts elts of
+  []        -> ATrue
+  AFalse:[] -> AFalse
+  single:[] -> single
+  as        -> And as
+  where
+    buildAndElts :: [Assertion t] -> [Assertion t]
+    buildAndElts es = case es of
+      []              -> []
+      (ATrue:rest)    -> buildAndElts rest
+      (AFalse:_)      -> [AFalse]
+      ((And as):rest) -> buildAndElts (as ++ rest)
+      (a:as)          -> a : buildAndElts as
+
+aOr :: [Assertion t] -> Assertion t
+aOr elts = case buildOrElts elts of
+  []        -> ATrue
+  ATrue:[]  -> ATrue
+  single:[] -> single
+  as        -> Or as
+  where
+    buildOrElts :: [Assertion t] -> [Assertion t]
+    buildOrElts es = case es of
+      []             -> []
+      (ATrue:_)      -> [ATrue]
+      (AFalse:rest)  -> buildOrElts rest
+      ((Or as):rest) -> buildOrElts (as ++ rest)
+      (a:as)         -> a : buildOrElts as
+
+aImp :: Assertion t -> Assertion t -> Assertion t
+aImp p q = case (p, q) of
+  (ATrue, _)  -> q
+  (AFalse, _) -> ATrue
+  (_, ATrue)  -> ATrue
+  (_, AFalse) -> Not p
+  _           -> Imp p q
 
 --------------------------
 -- Assertion Evaluation --
@@ -394,8 +434,41 @@ instance FreeVariables (Assertion t) where
 -- Pretty Printer --
 --------------------
 
-instance SMTString t => Pretty (Arith t) where
-  pretty = pretty . S8.unpack . toSMT
+toSexp :: Pretty a => Doc ann -> [a] -> Doc ann
+toSexp name as = sexpEnclose $ name:(map pretty as)
 
-instance (SMTString t, SMTTypeString t) => Pretty (Assertion t) where
-  pretty = pretty . S8.unpack . toSMT
+sexpEnclose :: [Doc ann] -> Doc ann
+sexpEnclose = encloseSep lparen rparen space
+
+instance Pretty t => Pretty (Arith t) where
+  pretty arith = case arith of
+    Num n     -> pretty n
+    Var name  -> pretty name
+    Add as    -> toSexp "+"   as
+    Sub as    -> toSexp "-"   as
+    Mul as    -> toSexp "*"   as
+    Div a1 a2 -> toSexp "/"   [a1, a2]
+    Mod a1 a2 -> toSexp "mod" [a1, a2]
+    Pow a1 a2 -> toSexp "^"   [a1, a2]
+
+
+instance Pretty t => Pretty (Assertion t) where
+  pretty assertion = case assertion of
+    ATrue         -> "true"
+    AFalse        -> "false"
+    Atom name     -> pretty name
+    Not a         -> toSexp "not" [a]
+    And as        -> toSexp "and" as
+    Or as         -> toSexp "or" as
+    Imp a1 a2     -> toSexp "=>" [a1, a2]
+    Eq a1 a2      -> toSexp "="  [a1, a2]
+    Lt a1 a2      -> toSexp "<"  [a1, a2]
+    Gt a1 a2      -> toSexp ">"  [a1, a2]
+    Lte a1 a2     -> toSexp "<=" [a1, a2]
+    Gte a1 a2     -> toSexp ">=" [a1, a2]
+    Forall vars a -> quantToSexp "forall" vars a
+    Exists vars a -> quantToSexp "exists" vars a
+    where
+      quantToSexp name vs a = sexpEnclose $ [ name
+                                            , sexpEnclose $ map pretty vs
+                                            , pretty a ]

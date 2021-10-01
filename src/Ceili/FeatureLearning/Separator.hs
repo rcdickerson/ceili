@@ -5,13 +5,14 @@ module Ceili.FeatureLearning.Separator
   ) where
 
 import Ceili.CeiliEnv
-import Ceili.SMTString
 import Ceili.ProgState
 import Ceili.StatePredicate
 import Data.Set ( Set )
 import qualified Data.Set as Set
+import Prettyprinter
 
-findSeparator :: (SMTString p, SMTString s, StatePredicate p s) =>
+
+findSeparator :: (Pretty p, Pretty s, StatePredicate p s) =>
                  Int
               -> (Int -> Set p)
               -> [ProgState s]
@@ -28,12 +29,12 @@ findSeparator maxCandidateSize candidatesOfSize goodTests badTests = let
         then logMaxSizeReached maxCandidateSize >> return Nothing
         else featureLearn' (size + 1)
       Just feature -> do
-        log_d $ "[Separator] Found separator: " ++ showSMT feature
+        log_d $ "[Separator] Found separator: " ++ (show . pretty) feature
         return $ Just feature
   in do
     log_d   "[Separator] Beginning separator search"
-    log_d $ "[Separator]   Good tests: " ++ (show $ map prettySMTState goodTests)
-    log_d $ "[Separator]   Bad tests: "  ++ (show $ map prettySMTState badTests)
+    log_d . show $ pretty "[Separator] Good tests: " <+> (align . prettyProgStates $ goodTests)
+    log_d . show $ pretty "[Separator] Bad tests: " <+> (align . prettyProgStates $ badTests)
     featureLearn' 1
 
 firstThatSeparates :: StatePredicate p s

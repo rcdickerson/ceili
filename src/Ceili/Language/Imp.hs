@@ -65,7 +65,6 @@ import Ceili.Language.Compose
 import Ceili.Literal
 import Ceili.Name
 import Ceili.ProgState
-import Ceili.SMTString
 import Ceili.StatePredicate
 import Data.List ( partition )
 import Data.UUID
@@ -376,19 +375,28 @@ instance FuelTank Fuel where
   getFuel   = id
   setFuel _ = id
 
+class SplitOnBExp t where
+  splitOnBExp :: BExp t -> ProgState t -> Ceili ( Maybe (ProgState t)
+                                                , Maybe (ProgState t) )
+
+instance SplitOnBExp Integer where
+  splitOnBExp bexp st = return $ if eval () st bexp
+                                 then (Nothing, Just st)
+                                 else (Just st, Nothing)
+
 decrementFuel :: (FuelTank f) => f -> f
 decrementFuel fuel =
   case getFuel fuel of
     Fuel n | n > 0 -> setFuel fuel $ Fuel (n - 1)
     _ -> fuel
 
-type ImpStep t = Ceili (Maybe (ProgState t))
+type ImpStep t = Ceili [ProgState t]
 
 instance Evaluable c t (ImpSkip t e) (ImpStep t) where
-  eval _ st _ = return $ Just st
+  eval _ st _ = return [st]
 
 instance (Evaluable c t (AExp t) t) => Evaluable c t (ImpAsgn t e) (ImpStep t) where
-  eval ctx st (ImpAsgn var aexp) = return $ Just $ Map.insert var (eval ctx st aexp) st
+  eval ctx st (ImpAsgn var aexp) = return $ [Map.insert var (eval ctx st aexp) st]
 
 instance Evaluable c t e (ImpStep t) => Evaluable c t (ImpSeq t e) (ImpStep t) where
   eval = evalSeq
@@ -397,53 +405,62 @@ evalSeq :: Evaluable c t e (ImpStep t)
         => c -> ProgState t -> (ImpSeq t e) -> ImpStep t
 evalSeq ctx st (ImpSeq stmts) =
   case stmts of
-    [] -> return $ Just st
+    [] -> return [st]
     (stmt:rest) -> do
       mSt' <- eval ctx st stmt
       case mSt' of
-        Nothing  -> return Nothing
+        Nothing  -> return []
         Just st' -> evalSeq ctx st' (ImpSeq rest)
 
-instance ( Evaluable c t (BExp t) Bool
-         , Evaluable c t e (ImpStep t)
-         )
+instance ( SplitOnBExp t, Evaluable c t e (ImpStep t) )
         => Evaluable c t (ImpIf t e) (ImpStep t) where
-  eval ctx st (ImpIf cond t f) = if   (eval ctx st cond)
-                                 then (eval ctx st t)
-                                 else (eval ctx st f)
+  eval ctx st (ImpIf cond t f) = do
+    (mFalseSt, mTrueSt) <- eval ctx st cond
+    let falseSts = case mFalseSt of
+                     Nothing  -> []
+                     Just fSt -> eval ctx fSt f
+    let trueSts  = case mTrueSt of
+                     Nothing  -> []
+                     Just tSt -> eval ctx tSt t
+    return $ falseSts ++ trueSts
 
 instance ( FuelTank c
-         , Evaluable c t (BExp t) Bool
+         , SplitOnBExp t
          , Evaluable c t e (ImpStep t)
          )
         => Evaluable c t (ImpWhile t e) (ImpStep t) where
   eval = evalWhile
 
 evalWhile :: ( FuelTank c
-             , Evaluable c t (BExp t) Bool
+             , SplitOnBExp t
              , Evaluable c t e (ImpStep t)
              )
           => c
           -> ProgState t
           -> (ImpWhile t e)
           -> ImpStep t
-evalWhile ctx st (ImpWhile cond body meta) =
-    case (eval ctx st cond) of
-      False -> return $ Just st
-      True  ->
-        let ctx' = decrementFuel ctx
-        in case (getFuel ctx') of
-          Fuel n | n <= 0 -> do log_e "Evaluation ran out of fuel"
-                                return Nothing
-          _ -> do
-            mSt' <- eval ctx' st body
-            case mSt' of
-              Nothing  -> return Nothing
-              Just st' -> evalWhile ctx' st' (ImpWhile cond body meta)
+evalWhile ctx st loop@(ImpWhile cond body meta) = do
+    (mFalseSt, mTrueSt) <- splitOnBExp cond st
+    let falseSts = case mFalseSt of
+                     Nothing  -> []
+                     Just fSt -> [fSt]
+    trueSts <- case mTrueSt of
+                 Nothing  -> return []
+                 Just tSt ->
+                   let ctx' = decrementFuel ctx
+                   in case (getFuel ctx') of
+                        Fuel n | n <= 0 -> log_e "Evaluation ran out of fuel" >> return []
+                        _ -> do
+                          mSt' <- eval ctx' tSt body
+                          case mSt' of
+                            []   -> return []
+                            sts' -> (return . concat) =<< mapM (\s -> evalWhile ctx' s loop) sts'
+
+    return $ falseSts ++ trueSts
 
 instance ( FuelTank c
          , Evaluable c t (AExp t) t
-         , Evaluable c t (BExp t) Bool
+         , SplitOnBExp t
          )
         => Evaluable c t (ImpProgram t) (ImpStep t) where
   eval ctx st (In program) = eval ctx st program
@@ -522,7 +539,7 @@ instance ( FuelTank c
 
 iterateLoopStates :: ( FuelTank c
                      , Ord t
-                     , Evaluable c t (BExp t) Bool
+                     , Evaluable c t (BExp t) (Ceili Bool)
                      , Evaluable c t e (ImpStep t)
                      )
                   => c
@@ -551,7 +568,7 @@ instance (CollectLoopHeadStates c (f e) t, CollectLoopHeadStates c (g e) t) =>
 instance ( FuelTank c
          , Ord t
          , Evaluable c t (AExp t) t
-         , Evaluable c t (BExp t) Bool
+         , Evaluable c t (BExp t) (Ceili Bool)
          ) => CollectLoopHeadStates c (ImpProgram t) t where
   collectLoopHeadStates fuel sts (In f) = collectLoopHeadStates fuel sts f
 
@@ -660,8 +677,8 @@ instance ImpBackwardPT c e t => ImpBackwardPT c (ImpIf t e) t where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , ValidCheckable t
+         , Pretty t
          , AssertionParseable t
          , CollectableNames e
          , StatePredicate (Assertion t) t
@@ -692,9 +709,9 @@ instance ( Embeddable Integer t
       return $ A.And [inv, loopWP, endWP]
 
 getLoopInvariant :: ( Embeddable Integer t
+                    , ValidCheckable t
                     , Ord t
-                    , SMTString t
-                    , SMTTypeString t
+                    , Pretty t
                     , AssertionParseable t
                     , StatePredicate (Assertion t) t
                     , ImpPieContextProvider ctx t
@@ -726,13 +743,13 @@ instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
   impBackwardPT ctx (Inr f) post = impBackwardPT ctx f post
 
 instance ( Embeddable Integer t
+         , ValidCheckable t
+         , Pretty t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
          , AssertionParseable t
          , StatePredicate (Assertion t) t
-         , ImpPieContextProvider c t)
-         => ImpBackwardPT c (ImpProgram t) t where
+         , ImpPieContextProvider c t
+         ) => ImpBackwardPT c (ImpProgram t) t where
   impBackwardPT ctx (In f) post = impBackwardPT ctx f post
 
 
@@ -779,8 +796,8 @@ instance ImpForwardPT c e t => ImpForwardPT c (ImpIf t e) t where
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , ValidCheckable t
+         , Pretty t
          , CollectableNames e
          , ImpForwardPT c e t )
         => ImpForwardPT c (ImpWhile t e) t where
@@ -796,7 +813,7 @@ instance ( Embeddable Integer t
       then do log_d "Loop invariant verification conditions passed."
               return $ A.And [A.Not cond, inv]
       else throwError
-           $ "Loop failed verification conditions. Invariant: " ++ showSMT inv
+           $ "Loop failed verification conditions. Invariant: " ++ show inv
 
 instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
          ImpForwardPT c ((f :+: g) e) t where
@@ -805,7 +822,7 @@ instance (ImpForwardPT c (f e) t, ImpForwardPT c (g e) t) =>
 
 instance ( Embeddable Integer t
          , Ord t
-         , SMTString t
-         , SMTTypeString t
+         , ValidCheckable t
+         , Pretty t
          ) => ImpForwardPT c (ImpProgram t) t where
   impForwardPT ctx (In f) pre = impForwardPT ctx f pre

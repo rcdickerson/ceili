@@ -15,8 +15,10 @@ import Ceili.SMTString
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-runAndAssertEquivalent :: (SMTString t, SMTTypeString t)
-                       => Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
+runAndAssertEquivalent :: (SMTString t, SMTTypeString t, ValidCheckable t)
+                       => Assertion t
+                       -> Ceili (Maybe (Assertion t))
+                       -> IO ()
 runAndAssertEquivalent expected actual = do
   result <- runCeili emptyEnv actual
   case result of

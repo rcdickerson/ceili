@@ -28,7 +28,8 @@ env prog post = defaultEnv names
   where
     names = Set.union (namesIn prog) (namesIn post)
 
-assertEquivalent :: (SMTString t, SMTTypeString t) => Assertion t -> Assertion t -> IO ()
+assertEquivalent :: (SMTString t, SMTTypeString t, ValidCheckable t)
+                 => Assertion t -> Assertion t -> IO ()
 assertEquivalent a1 a2 = do
   let iff = And [ Imp a1 a2, Imp a2 a1 ]
   result <- withFastLogger LogNone $ \logger ->
@@ -38,7 +39,7 @@ assertEquivalent a1 a2 = do
     SMT.Invalid s    -> assertFailure s
     SMT.ValidUnknown -> assertFailure "Unable to establish equivalence."
 
-runAndAssertEquivalent :: (SMTString t, SMTTypeString t)
+runAndAssertEquivalent :: (SMTString t, SMTTypeString t, ValidCheckable t)
                        => Env -> Assertion t -> Ceili (Maybe (Assertion t)) -> IO ()
 runAndAssertEquivalent env expected actual = do
   result <- runCeili env actual
