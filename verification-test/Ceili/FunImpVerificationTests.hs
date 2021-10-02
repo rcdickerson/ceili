@@ -24,7 +24,7 @@ import System.FilePath
 data ExpectResult = ExpectSuccess | ExpectFailure
 
 envFromProg :: FunImpProgram t -> Env
-envFromProg prog = mkEnv LogLevelDebug 2000 (namesIn prog) --defaultEnv (namesIn prog)
+envFromProg prog = defaultEnv (namesIn prog)
 
 assertSMTResult expected result =
   case (expected, result) of

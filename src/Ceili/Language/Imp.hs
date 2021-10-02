@@ -643,7 +643,7 @@ data ImpPieContext t = ImpPieContext
   { pc_loopHeadStates   :: LoopHeadStates t
   , pc_programNames     :: Set Name
   , pc_programLits      :: Set t
-  , pc_candidateFilters :: [Assertion t -> Ceili Bool]
+  , pc_candidateFilters :: [Pie.CandidateFilter t]
   }
 
 instance ImpPieContextProvider (ImpPieContext t) t where
@@ -740,11 +740,11 @@ getLoopInvariant ctx (ImpWhile condB body meta) post =
       case mHeadStates of
         Nothing -> return Nothing
         Just testStates -> do
+          let cond    = bexpToAssertion condB
           let names   = pc_programNames pieCtx
           let lits    = pc_programLits  pieCtx
           let filters = pc_candidateFilters pieCtx
           let tests   = Set.toList . Set.unions . Map.elems $ testStates
-          let cond    = bexpToAssertion condB
           Pie.loopInvGen names lits filters impBackwardPT ctx cond body post tests
 
 instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>

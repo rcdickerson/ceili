@@ -13,6 +13,7 @@ module Ceili.SMT
   , checkSatFL
   , checkValidNoLog
   , checkValidFL
+  , declareVars
   ) where
 
 import qualified Ceili.Assertion as C
@@ -62,8 +63,8 @@ fastLoggerAdapter fastLogger = do
     , SSMT.logUntab    = modifyIORef' tab (subtract 2)
     }
 
-declareFVs :: SSMT.Solver -> [(Name, String)] -> IO ()
-declareFVs solver fvs = let
+declareVars :: SSMT.Solver -> [(Name, String)] -> IO ()
+declareVars solver fvs = let
   declareVars = map (\(name, typ) -> toDeclareConst name typ) fvs
   in mapM_ (SSMT.ackCommand solver) declareVars
 
@@ -84,7 +85,7 @@ instance SatCheckable Integer where
     let fvs = Set.toList . C.freeVars $ assertion
     let typePair name = (name, unpack $ smtTypeString @Integer)
     solver <- (SSMT.newSolver "z3" ["-in"]) $ Just logger
-    declareFVs solver $ map typePair fvs
+    declareVars solver $ map typePair fvs
     SSMT.assert solver $ SSMT.Atom (unpack . toSMT $ assertion)
     result <- SSMT.check solver
     case result of
