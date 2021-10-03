@@ -9,7 +9,6 @@ import Test.Framework
 import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.InvariantInference.Pie
-import Ceili.Name
 import Ceili.SMTString
 import Control.Monad.Trans.State ( evalStateT )
 import qualified Data.Map as Map
@@ -192,7 +191,7 @@ test_pie = let
                               , Map.fromList [(Name "x" 0, -5)] ]
   expected  = Lt @Integer (Num 0) (Var x)
   task = pie Vector.empty goodTests badTests
-  in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits [] ATrue ATrue [] Map.empty
+  in runAndAssertEquivalent expected $ evalStateT task $ PieEnv names lits [] [ATrue] ATrue [] Map.empty
 
 
 --

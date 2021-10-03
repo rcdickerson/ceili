@@ -740,12 +740,12 @@ getLoopInvariant ctx (ImpWhile condB body meta) post =
       case mHeadStates of
         Nothing -> return Nothing
         Just testStates -> do
-          let cond    = bexpToAssertion condB
+          let conds   = [bexpToAssertion condB]
           let names   = pc_programNames pieCtx
           let lits    = pc_programLits  pieCtx
           let filters = pc_candidateFilters pieCtx
           let tests   = Set.toList . Set.unions . Map.elems $ testStates
-          Pie.loopInvGen names lits filters impBackwardPT ctx cond body post tests
+          Pie.loopInvGen names lits filters impBackwardPT ctx conds body post tests
 
 instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
          ImpBackwardPT c ((f :+: g) e) t where

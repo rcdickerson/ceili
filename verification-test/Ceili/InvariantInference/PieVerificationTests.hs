@@ -71,4 +71,4 @@ test_loopInvGen = let
   expected = Eq (Sub [Var y, Var x])
                 (Sub [Var n, Var m])
   in runAndAssertEquivalent (env body post) expected
-     $ loopInvGen names lits [] impBackwardPT EmptyPieContextProvider (bexpToAssertion cond) body post tests
+     $ loopInvGen names lits [] impBackwardPT EmptyPieContextProvider [bexpToAssertion cond] body post tests

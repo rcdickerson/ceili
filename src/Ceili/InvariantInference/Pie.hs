@@ -61,12 +61,12 @@ createFV features tests =
 -- Computation --
 -----------------
 
-type CandidateFilter t = [ProgState t] -> Assertion t -> Assertion t -> Assertion t -> Ceili Bool
+type CandidateFilter t = [ProgState t] -> [Assertion t] -> Assertion t -> Assertion t -> Ceili Bool
 
 data PieEnv t = PieEnv { pe_names      :: Set Name
                        , pe_lits       :: Set t
                        , pe_goodTests  :: [ProgState t]
-                       , pe_loopCond   :: Assertion t
+                       , pe_loopConds  :: [Assertion t]
                        , pe_goal       :: Assertion t
                        , pe_cfilters   :: [CandidateFilter t]
                        , pe_candidates :: Map Int (Set (Assertion t))
@@ -77,37 +77,42 @@ type PieM t a = StateT (PieEnv t) Ceili a
 envGoodTests :: PieM t [ProgState t]
 envGoodTests = do (PieEnv _ _ tests _ _ _ _) <- get; return tests
 
-envLoopCond :: PieM t (Assertion t)
-envLoopCond = do (PieEnv _ _ _ cond _ _ _) <- get; return cond
+envLoopConds :: PieM t [Assertion t]
+envLoopConds = do (PieEnv _ _ _ conds _ _ _) <- get; return conds
 
 envGoal :: PieM t (Assertion t)
 envGoal = do (PieEnv _ _ _ _ goal _ _) <- get; return goal
 
 getFeatureCandidates :: ( Ord t
                         , Embeddable Integer t
+                        , Pretty t
                         ) => Int -> PieM t (Set (Assertion t))
 getFeatureCandidates size = do
-  PieEnv names lits goodTests loopCond goal cfilters candidateMap <- get
+  PieEnv names lits goodTests loopConds goal cfilters candidateMap <- get
   let mCandidates = Map.lookup size candidateMap
   case mCandidates of
     Just candidates -> return candidates
     Nothing -> do
       candidates <- lift $ do
         log_d $ "[PIE] Collecting and filtering feature candidates of size " ++ show size ++ "..."
-        let lieqs = Set.toList $ LI.linearInequalities names lits size
+        let lieqs = LI.linearInequalities names lits size
         let doFilter cfilter cLieqs = do
               lieqs' <- cLieqs
-              filterM (cfilter goodTests loopCond goal) lieqs'
-        filtered <- return . Set.fromList =<< foldr doFilter (return lieqs) cfilters
+              filterM (cfilter goodTests loopConds goal) lieqs'
+        filtered <- return . Set.fromList =<< foldr doFilter (return $ Set.toList lieqs) cfilters
         log_d $ "[PIE] Caching " ++ (show $ Set.size filtered) ++ " feature candidates with size "
-            ++ show size ++ " (" ++ (show $ length lieqs) ++ " before filtering)"
+            ++ show size ++ " (" ++ (show $ Set.size lieqs) ++ " before filtering)"
+        log_d $ "***** Loop cond: " ++ (show loopConds)
+        log_d $ "***** Allowed candidates: " ++ (show $ Set.toList filtered)
+        log_d $ "***** Disallowed candidates: " ++ (show $ Set.toList $ lieqs Set.\\ filtered)
         return filtered
       let candidateMap' = Map.insert size candidates candidateMap
-      put $ PieEnv names lits goodTests loopCond goal cfilters candidateMap'
+      put $ PieEnv names lits goodTests loopConds goal cfilters candidateMap'
       return candidates
 
 getCandidatesUpToSize :: ( Ord t
                          , Embeddable Integer t
+                         , Pretty t
                          ) => Int -> PieM t (Map Int (Set (Assertion t)))
 getCandidatesUpToSize size = do
   candidates <- mapM getFeatureCandidates $ [0..size]
@@ -138,15 +143,15 @@ loopInvGen :: ( Embeddable Integer t
            -> [CandidateFilter t]
            -> BackwardPT c p t
            -> c
-           -> Assertion t
+           -> [Assertion t]
            -> p
            -> Assertion t
            -> [ProgState t]
            -> Ceili (Maybe (Assertion t))
-loopInvGen names literals candidateFilters backwardPT ctx cond body post goodTests = do
+loopInvGen names literals candidateFilters backwardPT ctx conds body post goodTests = do
   log_i $ "[PIE] Beginning invariant inference with PIE"
   let task = loopInvGen' backwardPT ctx body
-  evalStateT task $ PieEnv names literals goodTests cond post candidateFilters Map.empty
+  evalStateT task $ PieEnv names literals goodTests conds post candidateFilters Map.empty
 
 loopInvGen' :: ( Embeddable Integer t
                , Ord t
@@ -160,10 +165,11 @@ loopInvGen' :: ( Embeddable Integer t
             -> PieM t (Maybe (Assertion t))
 loopInvGen' backwardPT ctx body = do
   goodTests <- envGoodTests
-  cond      <- envLoopCond
+  conds     <- envLoopConds
   goal      <- envGoal
   plog_i $ "[PIE] LoopInvGen searching for initial candidate invariant..."
-  mInvar <- vPreGen (Imp (Not cond) goal)
+  let nconds = And $ map Not conds
+  mInvar <- vPreGen (Imp nconds goal)
                     (Vector.fromList goodTests)
                     Vector.empty
   lift . log_i $ "[PIE] LoopInvGen initial invariant: " ++ (show . pretty) mInvar
@@ -182,8 +188,8 @@ loopInvGen' backwardPT ctx body = do
            plog_i $ "[PIE] Attempting to weaken invariant..."
            let validInvar inv = lift $ do
                  wp <- backwardPT ctx body inv
-                 checkValidB $ And [ Imp (And [Not cond, inv]) goal
-                                , Imp (And [cond, inv]) wp ]
+                 checkValidB $ And [ Imp (And [nconds, inv]) goal
+                                   , Imp (And $ inv:conds) wp ]
            weakenedInvar <- weaken validInvar invar'
            plog_i $ "[PIE] Inference complete. Learned invariant: " ++ (show . pretty) weakenedInvar
            return $ Just weakenedInvar
@@ -201,10 +207,10 @@ makeInductive :: ( Embeddable Integer t
               -> PieM t (Maybe (Assertion t))
 makeInductive backwardPT ctx body invar = do
   plog_d $ "[PIE] Checking inductivity of candidate invariant: " ++ (show . pretty) invar
-  cond <- envLoopCond
+  conds <- envLoopConds
   goodTests <- envGoodTests
   wp <- lift $ backwardPT ctx body invar
-  let query = Imp (And [invar, cond]) wp
+  let query = Imp (And $ invar:conds) wp
   response <- lift $ checkValid query
   mInvar <- case response of
     SMT.Valid        -> return $ Just invar
@@ -221,7 +227,7 @@ makeInductive backwardPT ctx body invar = do
     Nothing -> do
       plog_i $ "[PIE] Candidate invariant not inductive, attempting to strengthen"
       inductiveWP <- lift $ backwardPT ctx body invar
-      let goal = Imp (And [invar, cond]) inductiveWP
+      let goal = Imp (And $ invar:conds) inductiveWP
       mInvar' <- vPreGen goal (Vector.fromList goodTests) Vector.empty
       case mInvar' of
         Nothing -> do
