@@ -7,7 +7,7 @@ module Ceili.FeatureLearning.LinearInequalities
   ) where
 
 import Ceili.Assertion ( Arith(..), Assertion(..) )
-import qualified Ceili.InvariantInference.CollectionUtil as Collection
+import qualified Ceili.FeatureLearning.CollectionUtil as Collection
 import Ceili.Embedding
 import Ceili.Name
 import Data.Set ( Set )

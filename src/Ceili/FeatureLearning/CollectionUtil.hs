@@ -1,7 +1,7 @@
 -- Some miscellaneous utility functions for dealing with
 -- collections.
 
-module Ceili.InvariantInference.CollectionUtil
+module Ceili.FeatureLearning.CollectionUtil
   ( chooseWithReplacement
   , setToVec
   , subsetsOfSize

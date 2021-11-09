@@ -58,8 +58,10 @@ import qualified Ceili.Assertion.AssertionLanguage as A
 import Ceili.CeiliEnv
 import Ceili.Embedding
 import Ceili.Evaluation
+import qualified Ceili.FeatureLearning.LinearInequalities as LI
+import qualified Ceili.FeatureLearning.Pie as Pie
 import qualified Ceili.InvariantInference.Houdini as Houdini
-import qualified Ceili.InvariantInference.Pie as Pie
+import qualified Ceili.InvariantInference.LoopInvGen as Lig
 import Ceili.Language.AExp
 import Ceili.Language.BExp
 import Ceili.Language.Compose
@@ -643,7 +645,6 @@ data ImpPieContext t = ImpPieContext
   { pc_loopHeadStates   :: LoopHeadStates t
   , pc_programNames     :: Set Name
   , pc_programLits      :: Set t
-  , pc_candidateFilters :: [Pie.CandidateFilter t]
   }
 
 instance ImpPieContextProvider (ImpPieContext t) t where
@@ -740,12 +741,12 @@ getLoopInvariant ctx (ImpWhile condB body meta) post =
       case mHeadStates of
         Nothing -> return Nothing
         Just testStates -> do
-          let conds   = [bexpToAssertion condB]
-          let names   = pc_programNames pieCtx
-          let lits    = pc_programLits  pieCtx
-          let filters = pc_candidateFilters pieCtx
-          let tests   = Set.toList . Set.unions . Map.elems $ testStates
-          Pie.loopInvGen names lits filters impBackwardPT ctx conds body post tests
+          let conds = [bexpToAssertion condB]
+          let names = pc_programNames pieCtx
+          let lits  = pc_programLits  pieCtx
+          let tests = Set.toList . Set.unions . Map.elems $ testStates
+          let sepLearner = Pie.pie Set.empty (LI.linearInequalities names lits)
+          Lig.loopInvGen ctx impBackwardPT conds body post tests sepLearner
 
 instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
          ImpBackwardPT c ((f :+: g) e) t where

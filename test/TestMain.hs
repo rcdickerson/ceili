@@ -3,11 +3,12 @@ module Main where
 
 import Test.Framework
 import {-@ HTF_TESTS @-} Ceili.AssertionTest
+import {-@ HTF_TESTS @-} Ceili.FeatureLearning.CollectionUtilTest
+import {-@ HTF_TESTS @-} Ceili.FeatureLearning.FeatureVectorTest
 import {-@ HTF_TESTS @-} Ceili.FeatureLearning.LinearInequalitiesTest
 import {-@ HTF_TESTS @-} Ceili.FeatureLearning.PACBooleanTest
+import {-@ HTF_TESTS @-} Ceili.FeatureLearning.PieTest
 import {-@ HTF_TESTS @-} Ceili.FeatureLearning.SeparatorTest
-import {-@ HTF_TESTS @-} Ceili.InvariantInference.CollectionUtilTest
-import {-@ HTF_TESTS @-} Ceili.InvariantInference.PieTest
 import {-@ HTF_TESTS @-} Ceili.Language.AExpTest
 import {-@ HTF_TESTS @-} Ceili.Language.AExpParserTest
 import {-@ HTF_TESTS @-} Ceili.Language.BExpTest

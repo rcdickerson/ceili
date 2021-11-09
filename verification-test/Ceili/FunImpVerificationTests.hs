@@ -101,7 +101,7 @@ runBackward expectedResult progFile pre post = do
         loopHeadStates <- collectLoopHeadStates evalCtx (mkTestStartStates prog) prog
         let ptCtx = BackwardPTContext
                     funEnv
-                    (ImpPieContext loopHeadStates (namesIn prog) (litsIn prog) [])
+                    (ImpPieContext loopHeadStates (namesIn prog) (litsIn prog))
         impBackwardPT ptCtx prog post
   assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do

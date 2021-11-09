@@ -9,7 +9,6 @@ import Test.Framework
 import Ceili.Assertion
 import Ceili.CeiliEnv
 import Ceili.FeatureLearning.PACBoolean
-import Ceili.Name
 import qualified Data.Map as Map
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
@@ -176,16 +175,16 @@ test_learnBoolExpr = let
                              , Lt x (Num 5)
                              , Lt x (Num 10) ] :: Vector (Assertion Integer)
   -- Target: 0 < x < 5
-  posFV    = Vector.fromList [ Vector.fromList [False, True,  False, True,  True] -- x = 1
-                             , Vector.fromList [False, True,  True,  True,  True] -- x = 2
-                             ]
   negFV    = Vector.fromList [ Vector.fromList [True,  False, False, True,  True] -- x = -1
                              , Vector.fromList [False, False, False, True,  True] -- x = 0
                              , Vector.fromList [False, True,  True,  False, True] -- x = 7
                              ]
+  posFV    = Vector.fromList [ Vector.fromList [False, True,  False, True,  True] -- x = 1
+                             , Vector.fromList [False, True,  True,  True,  True] -- x = 2
+                             ]
   expected = And [ Lt (Num 0) x, Lt x (Num 5)]
   in do
-    result <- runCeili emptyEnv $ learnBoolExpr features posFV negFV
+    result <- runCeili emptyEnv $ learnBoolExpr features negFV posFV
     case result of
       Left err     -> assertFailure err
       Right actual -> assertEqual expected actual
@@ -201,17 +200,16 @@ test_learnBoolExpr_largerClause = let
                              , Eq x (Num 7)
                              ] :: Vector (Assertion Integer)
   -- Target: (x < 5  or  x >= 10  or  x = 7)  and  (x >= 0)
+  negFV    = Vector.fromList [ Vector.fromList [True,  False, False, True,  True,  False, False] -- x = -1
+                             , Vector.fromList [False, True,  True,  False, True,  False, False] -- x = 6
+                             , Vector.fromList [False, True,  True,  False, True,  False, False] -- x = 9
+                             ]
   posFV    = Vector.fromList [ Vector.fromList [False, False, False, True,  True,  False, False] -- x = 0
                              , Vector.fromList [False, True,  False, True,  True,  False, False] -- x = 1
                              , Vector.fromList [False, True,  True,  True,  True,  False, False] -- x = 2
                              , Vector.fromList [False, True,  True,  False, True,  False, True]  -- x = 7
                              , Vector.fromList [False, True,  True,  False, False, True,  False] -- x = 10
                              , Vector.fromList [False, True,  True,  False, False, False, False] -- x = 11
-                             ]
-  negFV    = Vector.fromList [ Vector.fromList [True,  False, False, True,  True,  False, False] -- x = -1
-                             , Vector.fromList [False, True,  True,  False, True,  False, False] -- x = 6
-                             , Vector.fromList [False, True,  True,  False, True,  False, False] -- x = 9
-
                              ]
   expected = And [ Or [ Lt x (Num 5)
                       , Not $ Lt x (Num 10)
@@ -220,7 +218,7 @@ test_learnBoolExpr_largerClause = let
                  , Not $ Lt x (Num 0)
                  ]
   in do
-    result <- runCeili emptyEnv $ learnBoolExpr features posFV negFV
+    result <- runCeili emptyEnv $ learnBoolExpr features negFV posFV
     case result of
       Left err     -> assertFailure err
       Right actual -> assertEqual expected actual

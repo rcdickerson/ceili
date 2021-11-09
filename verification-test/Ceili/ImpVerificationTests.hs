@@ -78,7 +78,7 @@ runBackward expectedResult progFile pre post = do
   prog <- readAndParse progFile
   let findWP = do
         loopHeadStates <- collectLoopHeadStates (Fuel 1000) (mkTestStartStates prog) prog
-        let ctx = ImpPieContext loopHeadStates (namesIn prog) (litsIn prog) []
+        let ctx = ImpPieContext loopHeadStates (namesIn prog) (litsIn prog)
         impBackwardPT ctx prog post
   assertRunsWithoutErrors (envFromProg prog) findWP $
     \result -> do

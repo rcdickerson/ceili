@@ -43,9 +43,9 @@ learnBoolExpr :: Pretty t
               -> Vector FeatureVector
               -> Vector FeatureVector
               -> Ceili (Assertion t)
-learnBoolExpr features posFV negFV = do
+learnBoolExpr features negFV posFV = do
   log_d "[PAC] Begin learning boolean expression..."
-  boolLearn features posFV negFV 1 Vector.empty
+  boolLearn features negFV posFV 1 Vector.empty
 
 boolLearn :: Pretty t
           => Vector (Assertion t)
@@ -54,7 +54,7 @@ boolLearn :: Pretty t
           -> Int
           -> Vector Clause
           -> Ceili (Assertion t)
-boolLearn features posFV negFV k prevClauses = do
+boolLearn features negFV posFV k prevClauses = do
   log_d $ "[PAC] Looking at clauses of size " ++ show k
   let nextClauses    = clausesWithSize k $ Vector.length features
   let consistentNext = removeInconsistentClauses nextClauses posFV
@@ -65,7 +65,7 @@ boolLearn features posFV negFV k prevClauses = do
       let assertion = clausesToAssertion features $ Vector.toList solution
       log_d $ "[PAC] Learned boolean expression: " ++ (show . pretty) assertion
       return $ assertion
-    Nothing -> boolLearn features posFV negFV (k + 1) clauses
+    Nothing -> boolLearn features negFV posFV (k + 1) clauses
 
 -- |Removes all clauses which falsify at least one feature vector in the given vector of FVs.
 removeInconsistentClauses :: Vector Clause -> Vector FeatureVector -> Vector Clause
@@ -165,12 +165,12 @@ clausesWithSize size numFeatures =
   else case size of
     0 -> Vector.empty
     1 -> let
-      pos = Vector.fromList $ map (\i -> Map.singleton i CPos) [0..numFeatures-1]
       neg = Vector.fromList $ map (\i -> Map.singleton i CNeg) [0..numFeatures-1]
-      in pos Vector.++ neg
+      pos = Vector.fromList $ map (\i -> Map.singleton i CPos) [0..numFeatures-1]
+      in neg Vector.++ pos
     _ -> let
       prev    = clausesWithSize (size - 1) (numFeatures - 1)
-      pos     = Vector.map (\clause -> Map.insert (numFeatures - 1) CPos clause) prev
       neg     = Vector.map (\clause -> Map.insert (numFeatures - 1) CNeg clause) prev
+      pos     = Vector.map (\clause -> Map.insert (numFeatures - 1) CPos clause) prev
       smaller = clausesWithSize size $ numFeatures - 1
-      in pos Vector.++ neg Vector.++ smaller
+      in neg Vector.++ pos Vector.++ smaller

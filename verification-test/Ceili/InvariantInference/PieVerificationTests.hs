@@ -8,7 +8,9 @@ import Test.Framework
 
 import Ceili.Assertion
 import Ceili.CeiliEnv
-import Ceili.InvariantInference.Pie
+import Ceili.FeatureLearning.LinearInequalities
+import Ceili.FeatureLearning.Pie
+import Ceili.InvariantInference.LoopInvGen
 import Ceili.Language.BExp ( bexpToAssertion )
 import Ceili.Language.Imp
 import Ceili.Literal
@@ -21,7 +23,7 @@ import System.Log.FastLogger
 
 data EmptyPieContextProvider = EmptyPieContextProvider
 instance ImpPieContextProvider EmptyPieContextProvider Integer where
-  impPieCtx _ = ImpPieContext Map.empty Set.empty Set.empty []
+  impPieCtx _ = ImpPieContext Map.empty Set.empty Set.empty
 
 env :: ImpProgram t -> Assertion t -> Env
 env prog post = defaultEnv names
@@ -71,4 +73,5 @@ test_loopInvGen = let
   expected = Eq (Sub [Var y, Var x])
                 (Sub [Var n, Var m])
   in runAndAssertEquivalent (env body post) expected
-     $ loopInvGen names lits [] impBackwardPT EmptyPieContextProvider [bexpToAssertion cond] body post tests
+     $ loopInvGen EmptyPieContextProvider impBackwardPT [bexpToAssertion cond] body post tests
+     $ pie Set.empty (linearInequalities names lits)

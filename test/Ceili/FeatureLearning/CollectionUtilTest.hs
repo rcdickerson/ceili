@@ -1,10 +1,10 @@
 {-# OPTIONS_GHC -F -pgmF htfpp #-}
 
-module Ceili.InvariantInference.CollectionUtilTest(htf_thisModulesTests) where
+module Ceili.FeatureLearning.CollectionUtilTest(htf_thisModulesTests) where
 
 import Test.Framework
 
-import Ceili.InvariantInference.CollectionUtil
+import Ceili.FeatureLearning.CollectionUtil
 import Data.Set ( Set )
 import qualified Data.Set as Set
 import Data.Vector ( Vector )
