@@ -231,7 +231,7 @@ vPreGen goal badTests goodTests = do
   plog_d $ "[LoopInvGen] Starting vPreGen pass"
   plog_d . show $ pretty "[LoopInvGen] goal: " <+> pretty goal
   plog_d . show $ pretty "[LoopInvGen] bad tests: "  <+> (align . prettyProgStates . Vector.toList) badTests
-  plog_d . show $ pretty "[LoopInvGen] good tests: " <+> (align . prettyProgStates . Vector.toList) goodTests
+--  plog_d . show $ pretty "[LoopInvGen] good tests: " <+> (align . prettyProgStates . Vector.toList) goodTests
   sepLearner <- envSeparatorLearner
   mCandidate <- lift $ sepLearner (Vector.toList badTests) (Vector.toList goodTests)
   case mCandidate of
