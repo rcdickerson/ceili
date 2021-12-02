@@ -109,12 +109,12 @@ loopInvGen' ctx backwardPT body = do
   mInvar <- vPreGen (aImp nconds goal)
                     Vector.empty
                     (Vector.fromList goodTests)
-  lift . log_i $ "[LoopInvGen] Initial invariant: " ++ (show . pretty) mInvar
   case mInvar of
     Nothing -> do
       plog_i "[LoopInvGen] Unable to find initial candidate invariant (an I s.t. I /\\ ~c => Post)"
       return Nothing
     Just invar -> do
+      lift . log_i $ "[LoopInvGen] Initial invariant: " ++ (show . pretty) mInvar
       mInvar' <- makeInductive backwardPT ctx body invar
       case mInvar' of
          Nothing -> do
