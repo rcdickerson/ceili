@@ -745,7 +745,7 @@ getLoopInvariant ctx (ImpWhile condB body meta) post =
           let names = pc_programNames pieCtx
           let lits  = pc_programLits  pieCtx
           let tests = Set.toList . Set.unions . Map.elems $ testStates
-          let sepLearner = Pie.pie Set.empty (LI.linearInequalities names lits)
+          let sepLearner = Pie.pie Set.empty (LI.linearInequalities lits)
           Lig.loopInvGen ctx impBackwardPT conds body post tests sepLearner
 
 instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>

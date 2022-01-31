@@ -38,4 +38,4 @@ test_featureLearn = let
   badTests  = [ Map.fromList [(Name "x" 0, -1)]
               , Map.fromList [(Name "x" 0, -5)] ] :: [ProgState Integer]
   expected  = Lt (Num 0) (Var x)
-  in runAndAssertEquivalent expected $ findSeparator 1 (linearInequalities names lits) goodTests badTests
+  in runAndAssertEquivalent expected $ findSeparator 1 (linearInequalities lits names) goodTests badTests

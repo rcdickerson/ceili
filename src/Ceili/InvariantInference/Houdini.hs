@@ -53,7 +53,7 @@ findCandidates :: ( Embeddable Integer t
                -> Assertion t
                -> Ceili [Assertion t]
 findCandidates names lits size precond = do
-  let candidates = linearInequalities names lits size
+  let candidates = linearInequalities lits names size
   log_d $ "[Houdini] Initial candidate size: " ++ (show $ Set.size candidates)
   filterM (checkValidB . Imp precond) $ Set.toList candidates
 

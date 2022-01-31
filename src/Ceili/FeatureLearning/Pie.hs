@@ -18,6 +18,7 @@ import Ceili.Embedding
 import Ceili.FeatureLearning.FeatureVector
 import qualified Ceili.FeatureLearning.PACBoolean as BL
 import qualified Ceili.FeatureLearning.Separator as SL
+import Ceili.Name
 import Ceili.ProgState
 import Ceili.StatePredicate
 import Data.Maybe ( isJust )
@@ -27,13 +28,14 @@ import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
 import Prettyprinter
 
+type CandidateGenerator t = Set Name -> Int -> Set (Assertion t)
 
 pie :: ( Embeddable Integer t
        , Ord t
        , Pretty t
        , StatePredicate (Assertion t) t )
     => Set (Assertion t)
-    -> (Int -> Set (Assertion t))
+    -> CandidateGenerator t
     -> [ProgState t]
     -> [ProgState t]
     -> Ceili (Maybe (Assertion t))
@@ -46,7 +48,7 @@ pie' :: ( Embeddable Integer t
         , Pretty t
         , StatePredicate (Assertion t) t )
     => Vector (Assertion t)
-    -> (Int -> Set (Assertion t))
+    -> CandidateGenerator t
     -> Vector (ProgState t)
     -> Vector (ProgState t)
     -> Ceili (Maybe (Assertion t))
@@ -81,13 +83,15 @@ findAugmentingFeature :: ( Embeddable Integer t
                          , Pretty s
                          , Pretty t
                          , StatePredicate (Assertion t) s )
-                      => (Int -> Set (Assertion t))
+                      => CandidateGenerator t
                       -> Vector (ProgState s)
                       -> Vector (ProgState s)
                       -> Ceili (Maybe (Assertion t))
-findAugmentingFeature candidates xBad xGood = do
+findAugmentingFeature candidateGenerator xBad xGood = do
   let maxFeatureSize = 4 -- TODO: Don't hardcode max feature size
   let (badTests, goodTests) = (Vector.toList xBad, Vector.toList xGood)
+  let names = Set.union (namesIn badTests) (namesIn goodTests)
+  let candidates = candidateGenerator names
   mNewFeature <- SL.findSeparator maxFeatureSize candidates badTests goodTests
   case mNewFeature of
     Just newFeature -> do
@@ -97,9 +101,9 @@ findAugmentingFeature candidates xBad xGood = do
         (True, True) -> log_d "[PIE] Single conflict has no separating feature, giving up"
                         >> return Nothing
         (True, _)    -> log_d "[PIE] Reducing conflict set in good tests"
-                        >> findAugmentingFeature candidates xBad (halve xGood)
+                        >> findAugmentingFeature candidateGenerator xBad (halve xGood)
         _            -> log_d "[PIE] Reducing conflict set in bad tests"
-                        >> findAugmentingFeature candidates (halve xBad) xGood
+                        >> findAugmentingFeature candidateGenerator (halve xBad) xGood
 
 halve :: Vector a -> Vector a
 halve vec =

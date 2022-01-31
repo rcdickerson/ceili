@@ -24,8 +24,8 @@ import qualified Data.Set as Set
 --   reduced to the largest value the given set of names accomodates.
 linearInequalities :: ( Ord t
                       , Embeddable Integer t )
-                   => Set Name -> Set t -> Int -> Set (Assertion t)
-linearInequalities names lits size = let
+                   => Set t -> Set Name -> Int -> Set (Assertion t)
+linearInequalities lits names size = let
   size' = if (Set.size names < size) then Set.size names else size
   arithLits   = Set.map Num $ Set.insert (embed @Integer 0)
                             $ Set.insert (embed @Integer 1)

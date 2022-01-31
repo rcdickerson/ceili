@@ -74,4 +74,4 @@ test_loopInvGen = let
                 (Sub [Var n, Var m])
   in runAndAssertEquivalent (env body post) expected
      $ loopInvGen EmptyPieContextProvider impBackwardPT [bexpToAssertion cond] body post tests
-     $ pie Set.empty (linearInequalities names lits)
+     $ pie Set.empty (linearInequalities lits)

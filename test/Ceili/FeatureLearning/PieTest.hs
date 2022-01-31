@@ -175,7 +175,7 @@ test_pie = let
   goodTests = [ Map.fromList [(Name "x" 0, 1)]
               , Map.fromList [(Name "x" 0, 5)] ]
   expected  = Lt @Integer (Num 0) (Var x)
-  in runAndAssertEquivalent expected $ pie Set.empty (linearInequalities names lits) badTests goodTests
+  in runAndAssertEquivalent expected $ pie Set.empty (linearInequalities lits) badTests goodTests
 
 
 --

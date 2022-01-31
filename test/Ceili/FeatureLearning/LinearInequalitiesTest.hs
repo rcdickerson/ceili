@@ -59,4 +59,4 @@ test_twoVarsNoLits = let
                           , Lte (Add [Mul[Num $ -1, var "x"], Mul[Num $ -1, var "y"]]) (Num 0)
                           , Lte (Add [Mul[Num $ -1, var "x"], Mul[Num $ -1, var "y"]]) (Num 1)
                           ]
-  in assertHasSameItems expected $ linearInequalities names Set.empty 2
+  in assertHasSameItems expected $ linearInequalities Set.empty names 2
