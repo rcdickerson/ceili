@@ -19,6 +19,7 @@ module Ceili.SMT
 import qualified Ceili.Assertion as C
 import Ceili.Name
 import Ceili.SMTString ( toSMT, smtTypeString )
+import Control.Exception ( bracket )
 import Data.ByteString ( ByteString )
 import Data.ByteString.Char8 ( pack, unpack )
 import Data.IORef ( newIORef, modifyIORef', readIORef )
@@ -84,18 +85,20 @@ instance SatCheckable Integer where
   checkSat logger assertion = do
     let fvs = Set.toList . C.freeVars $ assertion
     let typePair name = (name, unpack $ smtTypeString @Integer)
-    solver <- (SSMT.newSolver "z3" ["-in"]) $ Just logger
-    declareVars solver $ map typePair fvs
-    SSMT.assert solver $ SSMT.Atom (unpack . toSMT $ assertion)
-    result <- SSMT.check solver
-    case result of
-      SSMT.Sat -> do
-        model <- SSMT.command solver $ SSMT.List [SSMT.Atom "get-model"]
-        let sat = Sat $ SSMT.showsSExpr model ""
-        _ <- SSMT.stop solver
-        return sat
-      SSMT.Unsat   -> SSMT.stop solver >> return Unsat
-      SSMT.Unknown -> SSMT.stop solver >> return SatUnknown
+    let performCheck solver = do
+          declareVars solver $ map typePair fvs
+          SSMT.assert solver $ SSMT.Atom (unpack . toSMT $ assertion)
+          result <- SSMT.check solver
+          case result of
+            SSMT.Sat -> do
+              model <- SSMT.command solver $ SSMT.List [SSMT.Atom "get-model"]
+              pure $ Sat $ SSMT.showsSExpr model ""
+            SSMT.Unsat   -> pure Unsat
+            SSMT.Unknown -> pure SatUnknown
+    bracket
+      (SSMT.newSolver "z3" ["-in"] $ Just logger)
+      (\solver -> SSMT.stop solver)
+      performCheck
 
 
 --------------------
