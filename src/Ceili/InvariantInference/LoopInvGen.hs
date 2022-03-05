@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 -- An implementation of LoopInvGen (with the core PIE
 -- component abstracted, see the Ceili.FeatureLearning.Pie module)
@@ -8,7 +9,8 @@
 -- http://web.cs.ucla.edu/~todd/research/pldi16.pdf
 
 module Ceili.InvariantInference.LoopInvGen
-  ( loopInvGen
+  ( SeparatorLearner(..)
+  , loopInvGen
   ) where
 
 import Ceili.Assertion
@@ -19,7 +21,7 @@ import Ceili.ProgState
 import qualified Ceili.SMT as SMT
 import Ceili.StatePredicate
 import Control.Monad.Trans ( lift )
-import Control.Monad.Trans.State ( StateT, evalStateT, get )
+import Control.Monad.Trans.State ( StateT, evalStateT, get, put )
 import qualified Data.Map as Map
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
@@ -30,40 +32,56 @@ import Prettyprinter
 -- Separators --
 ----------------
 
-type SeparatorLearner t = [ProgState t] -> [ProgState t] -> Ceili (Maybe (Assertion t))
+data SeparatorLearner ctx t = SeparatorLearner { sl_context :: ctx
+                                               , sl_learnSeparator :: ctx
+                                                                   -> [ProgState t]
+                                                                   -> [ProgState t]
+                                                                   -> Ceili (ctx, Maybe (Assertion t))
+                                               , sl_resetSearch :: ctx -> Ceili ctx
+                                             }
 
 
 -----------------
 -- Computation --
 -----------------
 
-data LigEnv t = LigEnv { pe_goodTests        :: [ProgState t]
-                       , pe_loopConds        :: [Assertion t]
-                       , pe_goal             :: Assertion t
-                       , pe_separatorLearner :: SeparatorLearner t
-                       }
+data LigEnv c t = LigEnv { pe_goodTests        :: [ProgState t]
+                         , pe_loopConds        :: [Assertion t]
+                         , pe_goal             :: Assertion t
+                         , pe_separatorLearner :: SeparatorLearner c t
+                         }
 
-type LigM t a = StateT (LigEnv t) Ceili a
+type LigM c t a = StateT (LigEnv c t) Ceili a
 
-envGoodTests :: LigM t [ProgState t]
+envGoodTests :: LigM c t [ProgState t]
 envGoodTests = return . pe_goodTests =<< get
 
-envLoopConds :: LigM t [Assertion t]
+envLoopConds :: LigM c t [Assertion t]
 envLoopConds = return . pe_loopConds =<< get
 
-envGoal :: LigM t (Assertion t)
+envGoal :: LigM c t (Assertion t)
 envGoal = return . pe_goal =<< get
 
-envSeparatorLearner :: LigM t (SeparatorLearner t)
-envSeparatorLearner = return . pe_separatorLearner =<< get
+learnSeparator :: [ProgState t] -> [ProgState t] -> LigM c t (Maybe (Assertion t))
+learnSeparator badTests goodTests = do
+  LigEnv goodStates loopConds goal (SeparatorLearner context learner resetf) <- get
+  (context', result) <- lift $ learner context badTests goodTests
+  put $ LigEnv goodStates loopConds goal (SeparatorLearner context' learner resetf)
+  pure result
 
-plog_e :: String -> LigM t ()
+resetLearnerSearch :: LigM c t ()
+resetLearnerSearch = do
+  LigEnv goodStates loopConds goal (SeparatorLearner context learner resetf) <- get
+  context' <- lift $ resetf context
+  put $ LigEnv goodStates loopConds goal (SeparatorLearner context' learner resetf)
+
+plog_e :: String -> LigM c t ()
 plog_e = lift . log_e
 
-plog_i :: String -> LigM t ()
+plog_i :: String -> LigM c t ()
 plog_i = lift . log_i
 
-plog_d :: String -> LigM t ()
+plog_d :: String -> LigM c t ()
 plog_d = lift . log_d
 
 
@@ -83,7 +101,7 @@ loopInvGen :: ( Embeddable Integer t
            -> p
            -> Assertion t
            -> [ProgState t]
-           -> SeparatorLearner t
+           -> SeparatorLearner lctx t
            -> Ceili (Maybe (Assertion t))
 loopInvGen ctx backwardPT loopConds body post goodTests separatorLearner = do
   log_i $ "[LoopInvGen] Beginning invariant inference"
@@ -99,7 +117,7 @@ loopInvGen' :: ( Embeddable Integer t
             => c
             -> BackwardPT c p t
             -> p
-            -> LigM t (Maybe (Assertion t))
+            -> LigM lctx t (Maybe (Assertion t))
 loopInvGen' ctx backwardPT body = do
   goodTests <- envGoodTests
   conds     <- envLoopConds
@@ -115,7 +133,7 @@ loopInvGen' ctx backwardPT body = do
       return Nothing
     Just invar -> do
       lift . log_i $ "[LoopInvGen] Initial invariant: " ++ (show . pretty) mInvar
-      mInvar' <- makeInductive backwardPT ctx body invar
+      mInvar' <- resetLearnerSearch >> makeInductive backwardPT ctx body invar
       case mInvar' of
          Nothing -> do
            plog_i "[LoopInvGen] Unable to find inductive strengthening"
@@ -141,7 +159,7 @@ makeInductive :: ( Embeddable Integer t
               -> c
               -> p
               -> Assertion t
-              -> LigM t (Maybe (Assertion t))
+              -> LigM lctx t (Maybe (Assertion t))
 makeInductive backwardPT ctx body invar = do
   plog_d $ "[LoopInvGen] Checking inductivity of candidate invariant: " ++ (show . pretty) invar
   conds <- envLoopConds
@@ -182,7 +200,7 @@ conj a1 a2 =
     (_, And as) -> And (a1:as)
     _           -> And [a1, a2]
 
-weaken :: (Assertion t -> LigM t Bool) -> Assertion t -> LigM t (Assertion t)
+weaken :: (Assertion t -> LigM lctx t Bool) -> Assertion t -> LigM lctx t (Assertion t)
 weaken sufficient assertion = do
   let conj = conjuncts assertion
   conj' <- paretoOptimize (sufficient . conjoin) conj
@@ -199,7 +217,7 @@ conjoin as = case as of
   (a:[]) -> a
   _      -> And as
 
-paretoOptimize :: ([Assertion t] -> LigM t Bool) -> [Assertion t] -> LigM t [Assertion t]
+paretoOptimize :: ([Assertion t] -> LigM lctx t Bool) -> [Assertion t] -> LigM lctx t [Assertion t]
 paretoOptimize sufficient assertions =
   let
     optimize (needed, toExamine) =
@@ -226,27 +244,28 @@ vPreGen :: ( Embeddable Integer t
         => (Assertion t)
         -> Vector (ProgState t)
         -> Vector (ProgState t)
-        -> LigM t (Maybe (Assertion t))
+        -> LigM lctx t (Maybe (Assertion t))
 vPreGen goal badTests goodTests = do
   plog_d $ "[LoopInvGen] Starting vPreGen pass"
-  plog_d . show $ pretty "[LoopInvGen] goal: " <+> pretty goal
-  plog_d . show $ pretty "[LoopInvGen] bad tests: "  <+> (align . prettyProgStates . Vector.toList) badTests
---  plog_d . show $ pretty "[LoopInvGen] good tests: " <+> (align . prettyProgStates . Vector.toList) goodTests
-  sepLearner <- envSeparatorLearner
-  mCandidate <- lift $ sepLearner (Vector.toList badTests) (Vector.toList goodTests)
+--  plog_d . show $ pretty "[LoopInvGen] goal: " <+> pretty goal
+  plog_d . show $ pretty "[LoopInvGen] good tests: "  <+> pretty (length goodTests)
+  plog_d . show $ pretty "[LoopInvGen] bad tests: "  <+> pretty (length badTests)
+  mCandidate <- learnSeparator (Vector.toList badTests) (Vector.toList goodTests)
   case mCandidate of
     Nothing -> return Nothing
     Just candidate -> do
       plog_d $ "[LoopInvGen] vPreGen candidate precondition: " ++ (show . pretty) candidate
       mCounter <- lift . findCounterexample $ Imp candidate goal
       case mCounter of
-        Nothing -> do
-          plog_d $ "[LoopInvGen] vPreGen found satisfactory precondition: " ++ show candidate
-          return $ Just candidate
-        Just counter -> do
+        Counterexample counter -> do
           plog_d $ "[LoopInvGen] vPreGen found counterexample: " ++ show counter
           let badTests' = Vector.cons (extractState counter) badTests
           vPreGen goal badTests' goodTests
+        FormulaValid -> do
+          plog_d $ "[LoopInvGen] vPreGen found satisfactory precondition: " ++ show candidate
+          return $ Just candidate
+        mCounter | mCounter == SMTTimeout || mCounter == SMTUnknown -> do
+          throwError $ "[LoopInvGen] SMT unable to verify or reject candidate: " ++ show candidate
 
 -- TODO: This is fragile.
 extractState :: Pretty t => (Assertion t) -> (ProgState t)

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 687ac517f98f8948118ce10fbc631bd9040c82ad7c63c1a875573c5f1439349d
+-- hash: ba1fa647f394f1ee7a2e35efb22aa68c9260ae96da7fce535fe2e6928003026a
 
 name:           ceili
 version:        0.1.0.0
@@ -34,6 +34,7 @@ library
       Ceili.Embedding
       Ceili.Evaluation
       Ceili.FeatureLearning.CollectionUtil
+      Ceili.FeatureLearning.FeatureComponents
       Ceili.FeatureLearning.FeatureGenerator
       Ceili.FeatureLearning.FeatureVector
       Ceili.FeatureLearning.LinearInequalities

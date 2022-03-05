@@ -745,8 +745,10 @@ getLoopInvariant ctx (ImpWhile condB body meta) post =
           let names = pc_programNames pieCtx
           let lits  = pc_programLits  pieCtx
           let tests = Set.toList . Set.unions . Map.elems $ testStates
-          let sepLearner = Pie.pie Set.empty (LI.linearInequalities lits)
-          Lig.loopInvGen ctx impBackwardPT conds body post tests sepLearner
+          let sepLearner _ bad good = do
+                result <- Pie.pie Set.empty (LI.linearInequalities lits) bad good
+                pure ((), result)
+          Lig.loopInvGen ctx impBackwardPT conds body post tests (Lig.SeparatorLearner () sepLearner (pure . id))
 
 instance (ImpBackwardPT c (f e) t, ImpBackwardPT c (g e) t) =>
          ImpBackwardPT c ((f :+: g) e) t where

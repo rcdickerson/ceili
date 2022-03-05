@@ -1,5 +1,6 @@
 module Ceili.CeiliEnv
   ( Ceili
+  , Counterexample(..)
   , Env(..)
   , LogLevel(..)
   , SMT.SatCheckable
@@ -177,24 +178,30 @@ runWithLog level task = do
     withFastLogger logType $ \logger ->
     task logger
 
+data Counterexample t = Counterexample (Assertion t)
+                      | FormulaValid
+                      | SMTTimeout
+                      | SMTUnknown
+                      deriving (Eq, Ord, Show)
+
 findCounterexample :: (SMT.ValidCheckable t, AssertionParseable t)
                    => Assertion t
-                   -> Ceili (Maybe (Assertion t))
+                   -> Ceili (Counterexample t)
 findCounterexample assertion = do
   logType <- logTypeAt LogLevelSMT
   result <- withTimeout $
             withFastLogger logType $ \logger ->
             SMT.checkValidFL logger assertion
   case result of
-    Nothing                  -> do log_e "SMT timeout"; return Nothing
-    Just SMT.Valid           -> return Nothing
-    Just SMT.ValidUnknown    -> do log_e "SMT unknown"; return Nothing
+    Nothing                  -> do log_e "SMT timeout"; pure SMTTimeout
+    Just SMT.Valid           -> pure FormulaValid
+    Just SMT.ValidUnknown    -> do log_e "SMT unknown"; pure SMTUnknown
     Just (SMT.Invalid model) -> case parseAssertion model of
                                   Left err  -> throwError $ "Error parsing "
                                                ++ show model
                                                ++ ":\n"
                                                ++ show err
-                                  Right cex -> return $ Just cex
+                                  Right cex -> pure $ Counterexample cex
 
 envFreshen :: FreshableNames a => a -> Ceili a
 envFreshen a = do
