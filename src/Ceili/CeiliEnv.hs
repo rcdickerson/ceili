@@ -27,9 +27,9 @@ module Ceili.CeiliEnv
 import Ceili.Assertion ( Assertion(..), AssertionParseable, parseAssertion )
 import Ceili.Name
 import qualified Ceili.SMT as SMT
-import Control.Concurrent.Timeout ( timeout )
 import Control.Monad.IO.Class ( liftIO )
 import Control.Monad.Except ( ExceptT, runExceptT, throwError )
+import Control.Monad.Trans ( lift )
 import Control.Monad.Trans.State ( StateT, evalStateT, get, put )
 import Data.Set ( Set )
 import qualified Data.Set as Set
@@ -120,11 +120,6 @@ logTypeAt level = case level of
   LogLevelError -> get >>= return . env_logger_error
   LogLevelInfo  -> get >>= return . env_logger_info
 
-withTimeout :: IO a -> Ceili (Maybe a)
-withTimeout t = do
-  timeoutMs <- get >>= return . env_smtTimeoutMs
-  liftIO $ timeout (1000 * timeoutMs) t
-
 checkValid :: SMT.ValidCheckable t => Assertion t -> Ceili SMT.ValidResult
 checkValid = checkValidWithLog LogLevelSMT
 
@@ -135,16 +130,14 @@ checkValidB assertion = do
     SMT.Valid        -> return True
     SMT.Invalid _    -> return False
     SMT.ValidUnknown -> return False
+    SMT.ValidTimeout -> return False
 
 checkValidWithLog :: SMT.ValidCheckable t
                   => LogLevel
                   -> Assertion t
                   -> Ceili SMT.ValidResult
 checkValidWithLog level assertion = do
-  result  <- runWithLog level $ (\logger -> SMT.checkValidFL logger assertion)
-  case result of
-    Nothing -> do log_e "SMT timeout"; return SMT.ValidUnknown
-    Just r  -> return r
+  runWithLog level $ (\logger -> SMT.checkValidFL logger assertion)
 
 checkSat :: SMT.SatCheckable t
          => Assertion t
@@ -160,23 +153,19 @@ checkSatB assertion = do
     SMT.Sat _      -> return True
     SMT.Unsat      -> return False
     SMT.SatUnknown -> return False
+    SMT.SatTimeout -> return False
 
 checkSatWithLog :: SMT.SatCheckable t
                 => LogLevel
                 -> Assertion t
                 -> Ceili SMT.SatResult
 checkSatWithLog level assertion = do
-  result <- runWithLog level $ (\logger -> SMT.checkSatFL logger assertion)
-  case result of
-    Nothing -> do log_e "SMT timeout"; return SMT.SatUnknown
-    Just r  -> return r
+  runWithLog level $ (\logger -> SMT.checkSatFL logger assertion)
 
-runWithLog :: LogLevel -> (FastLogger -> IO a) -> Ceili (Maybe a)
+runWithLog :: LogLevel -> (FastLogger -> IO a) -> Ceili a
 runWithLog level task = do
   logType <- logTypeAt level
-  withTimeout $
-    withFastLogger logType $ \logger ->
-    task logger
+  lift . lift $ withFastLogger logType $ \logger -> task logger
 
 data Counterexample t = Counterexample (Assertion t)
                       | FormulaValid
@@ -189,19 +178,19 @@ findCounterexample :: (SMT.ValidCheckable t, AssertionParseable t)
                    -> Ceili (Counterexample t)
 findCounterexample assertion = do
   logType <- logTypeAt LogLevelSMT
-  result <- withTimeout $
-            withFastLogger logType $ \logger ->
-            SMT.checkValidFL logger assertion
+  result  <- lift . lift $
+             withFastLogger logType $ \logger ->
+             SMT.checkValidFL logger assertion
   case result of
-    Nothing                  -> do log_e "SMT timeout"; pure SMTTimeout
-    Just SMT.Valid           -> pure FormulaValid
-    Just SMT.ValidUnknown    -> do log_e "SMT unknown"; pure SMTUnknown
-    Just (SMT.Invalid model) -> case parseAssertion model of
-                                  Left err  -> throwError $ "Error parsing "
-                                               ++ show model
-                                               ++ ":\n"
-                                               ++ show err
-                                  Right cex -> pure $ Counterexample cex
+    SMT.Valid           -> pure FormulaValid
+    SMT.ValidUnknown    -> pure SMTUnknown
+    SMT.ValidTimeout    -> pure SMTTimeout
+    (SMT.Invalid model) -> case parseAssertion model of
+                              Left err  -> throwError $ "Error parsing "
+                                           ++ show model
+                                           ++ ":\n"
+                                           ++ show err
+                              Right cex -> pure $ Counterexample cex
 
 envFreshen :: FreshableNames a => a -> Ceili a
 envFreshen a = do

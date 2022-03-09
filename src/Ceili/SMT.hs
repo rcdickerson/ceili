@@ -27,8 +27,8 @@ import qualified Data.Set as Set
 import qualified SimpleSMT as SSMT
 import qualified System.Log.FastLogger as FL
 
-data SatResult = Sat String | Unsat | SatUnknown
-data ValidResult = Valid | Invalid String | ValidUnknown
+data SatResult = Sat String | Unsat | SatUnknown | SatTimeout
+data ValidResult = Valid | Invalid String | ValidUnknown | ValidTimeout
 
 checkValidNoLog :: ValidCheckable t => C.Assertion t -> IO ValidResult
 checkValidNoLog assertion = do
@@ -95,8 +95,9 @@ instance SatCheckable Integer where
               pure $ Sat $ SSMT.showsSExpr model ""
             SSMT.Unsat   -> pure Unsat
             SSMT.Unknown -> pure SatUnknown
+            SSMT.Timeout -> pure SatTimeout
     bracket
-      (SSMT.newSolver "z3" ["-in"] $ Just logger)
+      (SSMT.newSolver "z3" ["-in", "-T:2"] $ Just logger)
       (\solver -> SSMT.stop solver)
       performCheck
 
@@ -115,3 +116,4 @@ instance ValidCheckable Integer where
       Sat model  -> Invalid model
       Unsat      -> Valid
       SatUnknown -> ValidUnknown
+      SatTimeout -> ValidTimeout

@@ -170,9 +170,14 @@ makeInductive backwardPT ctx body invar = do
   mInvar <- case response of
     SMT.Valid        -> return $ Just invar
     SMT.Invalid _    -> return Nothing
+    SMT.ValidTimeout -> do
+      plog_e $ "[LoopInvGen] SMT timed out when checking inductivity. "
+               ++ "Treating candidate as non-inductive. SMT query: "
+               ++ show query
+      return Nothing
     SMT.ValidUnknown -> do
       plog_e $ "[LoopInvGen] SMT solver returned unknown when checking inductivity. "
-               ++ "Treating candidate as non-inductive. Inductivity SMT query: "
+               ++ "Treating candidate as non-inductive. SMT query: "
                ++ show query
       return Nothing
   case mInvar of
@@ -202,9 +207,9 @@ conj a1 a2 =
 
 weaken :: (Assertion t -> LigM lctx t Bool) -> Assertion t -> LigM lctx t (Assertion t)
 weaken sufficient assertion = do
-  let conj = conjuncts assertion
-  conj' <- paretoOptimize (sufficient . conjoin) conj
-  return $ conjoin conj'
+  let aconjs = conjuncts assertion
+  aconjs' <- paretoOptimize (sufficient . conjoin) aconjs
+  return $ conjoin aconjs'
 
 conjuncts :: Assertion t -> [Assertion t]
 conjuncts assertion = case assertion of
@@ -264,8 +269,10 @@ vPreGen goal badTests goodTests = do
         FormulaValid -> do
           plog_d $ "[LoopInvGen] vPreGen found satisfactory precondition: " ++ show candidate
           return $ Just candidate
-        mCounter | mCounter == SMTTimeout || mCounter == SMTUnknown -> do
-          throwError $ "[LoopInvGen] SMT unable to verify or reject candidate: " ++ show candidate
+        SMTTimeout -> do
+          throwError $ "[LoopInvGen] SMT timed out on candidate: " ++ show candidate
+        SMTUnknown -> do
+          throwError $ "[LoopInvGen] SMT returned unknown on candidate: " ++ show candidate
 
 -- TODO: This is fragile.
 extractState :: Pretty t => (Assertion t) -> (ProgState t)
