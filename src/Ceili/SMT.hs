@@ -30,25 +30,23 @@ import qualified System.Log.FastLogger as FL
 data SatResult = Sat String | Unsat | SatUnknown | SatTimeout
 data ValidResult = Valid | Invalid String | ValidUnknown | ValidTimeout
 
-checkValidNoLog :: ValidCheckable t => C.Assertion t -> IO ValidResult
-checkValidNoLog assertion = do
-  logger <- SSMT.newLogger 0
-  checkValid logger assertion
+checkValidNoLog :: ValidCheckable t => SSMT.Solver -> C.Assertion t -> IO ValidResult
+checkValidNoLog = checkValid
 
-checkValidFL :: ValidCheckable t => FL.FastLogger -> C.Assertion t -> IO ValidResult
-checkValidFL fastLogger assertion = do
-  ssmtLogger <- fastLoggerAdapter fastLogger
-  checkValid ssmtLogger assertion
+checkValidFL :: ValidCheckable t => SSMT.Solver -> C.Assertion t -> IO ValidResult
+checkValidFL = checkValid
+--  ssmtLogger <- fastLoggerAdapter fastLogger
+--  checkValid ssmtLogger assertion
 
-checkSatNoLog :: SatCheckable t => C.Assertion t -> IO SatResult
-checkSatNoLog assertion = do
-  logger <- SSMT.newLogger 0
-  checkSat logger assertion
+checkSatNoLog :: SatCheckable t => SSMT.Solver -> C.Assertion t -> IO SatResult
+checkSatNoLog = checkSat
+--  logger <- SSMT.newLogger 0
+--  checkSat logger assertion
 
-checkSatFL :: SatCheckable t => FL.FastLogger -> C.Assertion t -> IO SatResult
-checkSatFL fastLogger assertion = do
-  ssmtLogger <- fastLoggerAdapter fastLogger
-  checkSat ssmtLogger assertion
+checkSatFL :: SatCheckable t => SSMT.Solver -> C.Assertion t -> IO SatResult
+checkSatFL = checkSat
+--  ssmtLogger <- fastLoggerAdapter fastLogger
+--  checkSat ssmtLogger assertion
 
 fastLoggerAdapter :: FL.FastLogger -> IO SSMT.Logger
 fastLoggerAdapter fastLogger = do
@@ -79,10 +77,10 @@ toDeclareConst name typ =
 ------------------
 
 class SatCheckable t where
-  checkSat :: SSMT.Logger -> C.Assertion t -> IO SatResult
+  checkSat :: SSMT.Solver -> C.Assertion t -> IO SatResult
 
 instance SatCheckable Integer where
-  checkSat logger assertion = do
+  checkSat solver assertion = do
     let fvs = Set.toList . C.freeVars $ assertion
     let typePair name = (name, unpack $ smtTypeString @Integer)
     let performCheck solver = do
@@ -97,21 +95,20 @@ instance SatCheckable Integer where
             SSMT.Unknown -> pure SatUnknown
             SSMT.Timeout -> pure SatTimeout
     bracket
-      (SSMT.newSolver "z3" ["-in", "-T:2"] $ Just logger)
-      (\solver -> SSMT.stop solver)
+      (do SSMT.push solver; pure solver)
+      SSMT.pop
       performCheck
-
 
 --------------------
 -- ValidCheckable --
 --------------------
 
 class ValidCheckable t where
-  checkValid :: SSMT.Logger -> C.Assertion t -> IO ValidResult
+  checkValid :: SSMT.Solver -> C.Assertion t -> IO ValidResult
 
 instance ValidCheckable Integer where
-  checkValid logger assertion = do
-    satResult <- checkSat logger $ C.Not assertion
+  checkValid solver assertion = do
+    satResult <- checkSat solver $ C.Not assertion
     return $ case satResult of
       Sat model  -> Invalid model
       Unsat      -> Valid
