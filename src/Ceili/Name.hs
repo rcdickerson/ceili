@@ -7,6 +7,7 @@ module Ceili.Name
   ( CollectableNames(..)
   , FreshableNames(..)
   , Freshener
+  , FreshMapping(..)
   , Handle
   , Id
   , MappableNames(..)

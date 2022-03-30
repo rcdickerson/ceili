@@ -22,4 +22,10 @@ createFV features tests =
   let fv = Vector.generate (Vector.length tests) $ \testIdx ->
            Vector.generate (Vector.length features) $ \featureIdx ->
            testState (features!featureIdx) (tests!testIdx)
-  in sequence $ Vector.map sequence fv
+  in (sequence $ Vector.map sequence fv) >>= pure . Vector.map (Vector.map (treatErrorsAs False))
+
+treatErrorsAs :: Bool -> PredicateResult -> Bool
+treatErrorsAs err result = case result of
+  Accepted -> True
+  Rejected -> False
+  Error _  -> err

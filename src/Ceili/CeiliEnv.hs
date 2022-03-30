@@ -12,10 +12,13 @@ module Ceili.CeiliEnv
   , checkSatWithLog
   , checkValid
   , checkValidB
+  , checkValidE
   , checkValidWithLog
   , defaultEnv
   , emptyEnv
   , envFreshen
+  , envGetNextIds
+  , envPutNextIds
   , findCounterexample
   , log_d
   , log_e
@@ -23,6 +26,7 @@ module Ceili.CeiliEnv
   , log_s
   , mkEnv
   , mkSolver
+  , remakeSolver
   , runCeili
   , throwError
   ) where
@@ -73,7 +77,14 @@ mkEnv solver minLogLevel smtTimeoutMs names =
 mkSolver :: IO SSMT.Solver
 mkSolver = do
   logger <- SSMT.newLogger 0
-  SSMT.newSolver "z3" ["-in", "-t:5000"] $ Nothing
+  SSMT.newSolver "z3" ["-in", "-t:2000"] $ Nothing
+
+remakeSolver :: Ceili ()
+remakeSolver = do
+  Env lsmt ldebug linfo lerror fresh timeout oldSolver <- get
+  _ <- lift . lift $ SSMT.stop oldSolver
+  newSolver <- lift . lift $ mkSolver
+  put $ Env lsmt ldebug linfo lerror fresh timeout newSolver
 
 defaultEnv :: SSMT.Solver -> Set Name -> Env
 defaultEnv solver = mkEnv solver LogLevelInfo 2000
@@ -145,10 +156,19 @@ checkValidB :: SMT.ValidCheckable t => Assertion t -> Ceili Bool
 checkValidB assertion = do
   valid <- checkValid assertion
   case valid of
-    SMT.Valid        -> return True
-    SMT.Invalid _    -> return False
-    SMT.ValidUnknown -> return False
-    SMT.ValidTimeout -> return False
+    SMT.Valid        -> pure True
+    SMT.Invalid _    -> pure False
+    SMT.ValidUnknown -> error "UNK"
+    SMT.ValidTimeout -> error "Timeout"
+
+checkValidE :: SMT.ValidCheckable t => Assertion t -> Ceili (Either String Bool)
+checkValidE assertion = do
+  valid <- checkValid assertion
+  pure $ case valid of
+    SMT.Valid        -> Right True
+    SMT.Invalid _    -> Right False
+    SMT.ValidUnknown -> Left "UNK"
+    SMT.ValidTimeout -> Left "Timeout"
 
 checkValidWithLog :: SMT.ValidCheckable t
                   => LogLevel
@@ -209,6 +229,14 @@ findCounterexample assertion = do
                                            ++ ":\n"
                                            ++ show err
                               Right cex -> pure $ Counterexample cex
+
+envGetNextIds :: Ceili NextFreshIds
+envGetNextIds = get >>= pure . env_nextFreshIds
+
+envPutNextIds :: NextFreshIds -> Ceili ()
+envPutNextIds nextIds = do
+  Env logs logd loge logi _ smtTimeout solver <- get
+  put $ Env logs logd loge logi nextIds smtTimeout solver
 
 envFreshen :: FreshableNames a => a -> Ceili a
 envFreshen a = do

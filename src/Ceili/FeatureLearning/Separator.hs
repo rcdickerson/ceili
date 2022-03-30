@@ -52,6 +52,20 @@ firstThatSeparates goodTests badTests assertions =
         then return $ Just a
         else firstThatSeparates goodTests badTests as
 
+acceptsAll :: StatePredicate p s => [ProgState s] -> p -> Ceili Bool
+acceptsAll states assertion =
+  return . and . map (treatErrorsAs False) =<< mapM (\state -> testState assertion state) states
+
+rejectsAll :: StatePredicate p s => [ProgState s] -> p -> Ceili Bool
+rejectsAll states assertion =
+  return . and . map not . map (treatErrorsAs True) =<< mapM (\state -> testState assertion state) states
+
+treatErrorsAs :: Bool -> PredicateResult -> Bool
+treatErrorsAs err result = case result of
+  Accepted -> True
+  Rejected -> False
+  Error _  -> err
+
 logMaxSizeReached :: Int -> Ceili ()
 logMaxSizeReached maxSize = log_d $
   "[Separator] Could not find separator within size bound (" ++ show maxSize ++ ")"
