@@ -77,7 +77,8 @@ mkEnv solver minLogLevel smtTimeoutMs names =
 mkSolver :: IO SSMT.Solver
 mkSolver = do
   logger <- SSMT.newLogger 0
-  SSMT.newSolver "z3" ["-in", "-t:2000"] $ Nothing
+  solver <- SSMT.newSolver "z3" ["-in", "-t:2000"] $ Just logger
+  pure solver
 
 remakeSolver :: Ceili ()
 remakeSolver = do

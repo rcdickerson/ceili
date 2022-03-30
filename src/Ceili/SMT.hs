@@ -95,9 +95,12 @@ instance SatCheckable Integer where
             SSMT.Unknown -> pure SatUnknown
             SSMT.Timeout -> pure SatTimeout
     bracket
-      (do SSMT.push solver; pure solver)
-      SSMT.pop
+      (pure solver)
+      (\s -> SSMT.simpleCommand s ["reset"])
       performCheck
+      -- (do SSMT.push solver; pure solver)
+      -- SSMT.pop
+      -- performCheck
 
 --------------------
 -- ValidCheckable --
